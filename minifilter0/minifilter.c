@@ -133,6 +133,7 @@ NPPreCreate (
 {
     NTSTATUS status;
     PFLT_FILE_NAME_INFORMATION nameInfo;
+    ANSI_STRING ansiStr;
 
     UNREFERENCED_PARAMETER( FltObjects );
     UNREFERENCED_PARAMETER( CompletionContext );
@@ -144,13 +145,17 @@ NPPreCreate (
                                             FLT_FILE_NAME_NORMALIZED |
                                             FLT_FILE_NAME_QUERY_DEFAULT,
                                             &nameInfo );
-        if ( NT_SUCCESS( status ) )
-        {
-            FltParseFileNameInformation( nameInfo );
-            PT_DBG_PRINT( PTDBG_TRACE_OPERATION_STATUS,
-                     ("minifilter0!NPPretCreate: create [%wZ]\n", nameInfo->Name) );
-            FltReleaseFileNameInformation( nameInfo );
-        }
+        if ( !NT_SUCCESS( status ) )
+            leave;
+
+        status = FltParseFileNameInformation( nameInfo );
+        if ( !NT_SUCCESS( status ) )
+            leave;
+        RtlUnicodeStringToAnsiString(&ansiStr, &nameInfo->Name, TRUE);
+        PT_DBG_PRINT( PTDBG_TRACE_OPERATION_STATUS,
+                     ("minifilter0!NPPretCreate: create [%Z]\n", &ansiStr) );
+        RtlFreeAnsiString( &ansiStr );
+		FltReleaseFileNameInformation( nameInfo );
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
@@ -174,8 +179,7 @@ NPPostCreate (
     //
     //  If this create was failing anyway, don't bother scanning now.
     //
-    if (!NT_SUCCESS( Data->IoStatus.Status ) ||
-        (STATUS_REPARSE == Data->IoStatus.Status))
+    if (!NT_SUCCESS( Data->IoStatus.Status ))
     {
         PT_DBG_PRINT( PTDBG_TRACE_OPERATION_STATUS,
                      ("minifilter0!NPPostCreate: failed\n") );
