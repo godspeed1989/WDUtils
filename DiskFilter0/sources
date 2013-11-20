@@ -1,0 +1,6 @@
+TARGETNAME=DiskFilter
+TARGETTYPE=DRIVER
+
+SOURCES=DiskFilter.c	\
+        Dispatch.c
+
