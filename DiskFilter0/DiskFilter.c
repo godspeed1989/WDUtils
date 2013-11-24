@@ -138,18 +138,22 @@ VOID DiskFilter_DriverReinitializeRoutine (
 
 	UNREFERENCED_PARAMETER(Context);
 	UNREFERENCED_PARAMETER(Count);
-	DbgPrint("Enter Driver Reinitialize...\n");
+	DbgPrint("Start Reinitialize...\n");
 
 	//	Enumerate device.
 	for(; DeviceObject; DeviceObject = DeviceObject->NextDevice)
 	{
 		DevExt = (PDISKFILTER_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+		DbgPrint(" -> [%wZ]", &DevExt->VolumeDosName);
 		if (DevExt->bIsProtectedVolume)
 		{
-			DbgPrint("Start Cache ...\n");
+			DbgPrint(" Protected\n");
+		}
+		else
+		{
+			DbgPrint("\n");
 		}
 	}
-	return;
 }
 
 NTSTATUS DiskFilter_AddDevice(PDRIVER_OBJECT DriverObject,
@@ -164,7 +168,7 @@ NTSTATUS DiskFilter_AddDevice(PDRIVER_OBJECT DriverObject,
 	PDEVICE_OBJECT LowerDeviceObject = NULL;
 
 	PAGED_CODE();
-	DbgPrint("OK, Enter add device...\n");
+	DbgPrint("DiskFilter_AddDevice: Enter\n");
 
 	// Create a device
 	Status = IoCreateDevice(DriverObject,
@@ -175,10 +179,10 @@ NTSTATUS DiskFilter_AddDevice(PDRIVER_OBJECT DriverObject,
 							FALSE,
 							&DeviceObject
 							);
-
 	if (!NT_SUCCESS(Status))
 	{
 		DbgPrint("Create device failed");
+		goto l_error;
 	}
 
 	DevExt = (PDISKFILTER_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
@@ -230,7 +234,7 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 	ULONG Length;
 	PUCHAR fileBuf;
 
-	DbgPrint("Enter Read Write Thread\n");
+	DbgPrint(": Start Read Write Thread\n");
 
 	//	set thread priority.
 	KeSetPriorityThread(KeGetCurrentThread(), LOW_REALTIME_PRIORITY);

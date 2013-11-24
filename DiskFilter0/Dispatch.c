@@ -46,12 +46,10 @@ NTSTATUS DiskFilter_DispatchReadWrite(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 static BOOLEAN IsProtectedVolume(PDEVICE_OBJECT DeviceObject)
 {
 	BOOLEAN bIsProtected = FALSE;
-	UNICODE_STRING VolumeDosName;
 	PDISKFILTER_DEVICE_EXTENSION DevExt = (PDISKFILTER_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 	ULONG i;
-
 	PDISKFILTER_DRIVER_EXTENSION DrvExt = (PDISKFILTER_DRIVER_EXTENSION)
-	IoGetDriverObjectExtension(DeviceObject->DriverObject, DISKFILTER_DRIVER_EXTENSION_ID);
+		IoGetDriverObjectExtension(DeviceObject->DriverObject, DISKFILTER_DRIVER_EXTENSION_ID);
 
 #if WINVER > _WIN32_WINNT_WINXP
 	//if (!KeAreAllApcsDisabled())
@@ -59,19 +57,16 @@ static BOOLEAN IsProtectedVolume(PDEVICE_OBJECT DeviceObject)
 	//while (!KeAreApcsDisabled());
 #endif
 	{
-		if (NT_SUCCESS(IoVolumeDeviceToDosName(DevExt->PhysicalDeviceObject, &VolumeDosName)))
+		if (NT_SUCCESS(IoVolumeDeviceToDosName(DevExt->PhysicalDeviceObject, &DevExt->VolumeDosName)))
 		{
-			DbgPrint("Current Volume : %wZ Online\n", &VolumeDosName);
-
+			DbgPrint(": [%wZ] Online\n", &DevExt->VolumeDosName);
 			for (i = 0; DrvExt->ProtectedVolumes[i]; ++i)
 			{
-				if (DrvExt->ProtectedVolumes[i] == VolumeDosName.Buffer[0])
+				if (DrvExt->ProtectedVolumes[i] == DevExt->VolumeDosName.Buffer[0])
 				{
-					DbgPrint("Protected!\n");
 					bIsProtected = TRUE;
 				}
 			}
-			RtlFreeUnicodeString(&VolumeDosName);
 		}
 	}
 	return bIsProtected;
@@ -88,6 +83,7 @@ NTSTATUS DiskFilter_DispatchControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	switch (IrpSp->Parameters.DeviceIoControl.IoControlCode)
 	{
 	case IOCTL_VOLUME_ONLINE:
+		DbgPrint("DiskFilter_DispatchControl: Enter\n");
 		if (IoForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp) &&
 			NT_SUCCESS(Irp->IoStatus.Status) &&
 			IsProtectedVolume(DeviceObject) &&
@@ -95,6 +91,7 @@ NTSTATUS DiskFilter_DispatchControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 			NT_SUCCESS(DiskFilter_InitBitMapAndCreateThread(DevExt)) // create thread
 			)
 		{
+			DbgPrint(": Protected\n");
 			DevExt->bIsProtectedVolume = TRUE;
 		}
 		Status = Irp->IoStatus.Status;
@@ -139,8 +136,9 @@ static NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 	IO_STATUS_BLOCK ios;
 	PIRP   Irp	= NULL;
 	KEVENT Event;
-
 	PDISKFILTER_DEVICE_EXTENSION DevExt = (PDISKFILTER_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+
+	DbgPrint(": DiskFilter_QueryVolumeInfo: Enter\n");
 	// Build IRP to get DBR
 	KeInitializeEvent(&Event, NotificationEvent, FALSE);
 	Irp = IoBuildAsynchronousFsdRequest(
@@ -153,7 +151,7 @@ static NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 	);
 	if (NULL == Irp)
 	{
-		KdPrint(("Build IRP failed!\n"));
+		DbgPrint("Build IRP failed!\n");
 		Status = STATUS_UNSUCCESSFUL;
 		goto ERROUT;
 	}
@@ -164,7 +162,7 @@ static NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 		KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
 		if (!NT_SUCCESS(Irp->IoStatus.Status))
 		{
-			KdPrint(("Forward IRP failed!\n"));
+			DbgPrint("Forward IRP failed!\n");
 			Status = STATUS_UNSUCCESSFUL;
 			goto ERROUT;
 		}
@@ -173,14 +171,14 @@ static NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 	// Distinguish the file system.
 	if (*(ULONG32*)NTFSFLG == *(ULONG32*)&DBR[NTFS_SIG_OFFSET])
 	{
-		KdPrint(("Current file system is NTFS\n"));
+		DbgPrint(": Current file system is NTFS\n");
 		DevExt->SectorSize = pNtfsBootSector->BytesPerSector;
 		DevExt->ClusterSize = DevExt->SectorSize * pNtfsBootSector->SectorsPerCluster;
 		DevExt->TotalSize.QuadPart = DevExt->SectorSize * pNtfsBootSector->TotalSectors;
 	}
 	else if (*(ULONG32*)FAT32FLG == *(ULONG32*)&DBR[FAT32_SIG_OFFSET])
 	{
-		KdPrint(("Current file system is FAT32\n"));
+		DbgPrint(": Current file system is FAT32\n");
 		DevExt->SectorSize = pFat32BootSector->BytesPerSector;
 		DevExt->ClusterSize = DevExt->SectorSize * pFat32BootSector->SectorsPerCluster;
 		DevExt->TotalSize.QuadPart = (DevExt->SectorSize*
@@ -188,7 +186,7 @@ static NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 	}
 	else if (*(ULONG32*)FAT16FLG == *(ULONG32*)&DBR[FAT16_SIG_OFFSET])
 	{
-		KdPrint(("Current file system is FAT16\n"));
+		DbgPrint(": Current file system is FAT16\n");
 		DevExt->SectorSize = pFat16BootSector->BytesPerSector;
 		DevExt->ClusterSize = DevExt->SectorSize * pFat16BootSector->SectorsPerCluster;
 		DevExt->TotalSize.QuadPart = DevExt->SectorSize *
@@ -197,12 +195,12 @@ static NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 	else
 	{
 		//	Unknown file system.
-		KdPrint(("file system can't be recongnized\n"));
+		DbgPrint("file system can't be recongnized\n");
 		Status = STATUS_UNSUCCESSFUL;
 	}
 ERROUT:
 
-	DbgPrint("Sector Size = %d, Volume Total size = Hi(%ld)Lo(%ld)\n",
+	DbgPrint(": Sector Size = %d, Volume Total size = Hi(%ld)Lo(%ld)\n",
 		DevExt->SectorSize, DevExt->TotalSize.HighPart, DevExt->TotalSize.LowPart);
 
 	if ((DevExt->LowerDeviceObject->Flags & DO_DIRECT_IO) &&
@@ -220,6 +218,8 @@ static NTSTATUS DiskFilter_InitBitMapAndCreateThread(PDISKFILTER_DEVICE_EXTENSIO
 {
 	NTSTATUS Status;
 	HANDLE hThread;
+	DbgPrint(": DiskFilter_InitBitMapAndCreateThread: Enter\n");
+
 	RtlInitializeBitMap(
 		&DevExt->Bitmap,
 		(PULONG)ExAllocatePoolWithTag(NonPagedPool,
@@ -371,6 +371,7 @@ NTSTATUS DiskFilter_DispatchPnp(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 				IoDetachDevice(DevExt->LowerDeviceObject);
 			}
 			IoDeleteDevice(DeviceObject);
+			RtlFreeUnicodeString(&DevExt->VolumeDosName);
 		}
 		IoCompleteRequest(Irp, IO_NO_INCREMENT);
 		return status;

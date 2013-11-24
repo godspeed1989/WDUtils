@@ -38,6 +38,7 @@ typedef struct _DISKFILTER_DEVICE_EXTENSION
 	KEVENT			PagingCountEvent;
 	BOOLEAN			CurrentPnpState;
 	BOOLEAN			bIsProtectedVolume;
+	UNICODE_STRING	VolumeDosName;
 
 	LARGE_INTEGER	TotalSize;		//	Total size of this volume in bytes.
 	ULONG			ClusterSize;	//	Cluster size of this volume in bytes.
