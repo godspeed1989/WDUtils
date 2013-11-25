@@ -11,8 +11,23 @@ NTSTATUS DiskFilter_DispatchDefault(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 NTSTATUS DiskFilter_DispatchPower(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
 	PDISKFILTER_DEVICE_EXTENSION DevExt = (PDISKFILTER_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+
 	PAGED_CODE();
-	DbgPrint("Enter Power Dispatch Routine...\n");
+	DbgPrint("DiskFilter_DispatchPower: ");
+	if (IrpSp->Parameters.Power.Type == SystemPowerState)
+	{
+		DbgPrint("SystemPowerState...\n");
+		if (PowerSystemShutdown == IrpSp->Parameters.Power.State.SystemState)
+		{
+			DbgPrint("System is shutting down...\n");
+			// ... Flush back Cache
+		}
+	}
+	else if (IrpSp->Parameters.Power.Type == DevicePowerState)
+		DbgPrint("DevicePowerState...\n");
+	else
+		DbgPrint("\n");
 
 #if WINVER<_WIN32_WINNT_VISTA
 	PoStartNextPowerIrp(Irp);
@@ -83,7 +98,7 @@ NTSTATUS DiskFilter_DispatchControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	switch (IrpSp->Parameters.DeviceIoControl.IoControlCode)
 	{
 	case IOCTL_VOLUME_ONLINE:
-		DbgPrint("DiskFilter_DispatchControl: Enter\n");
+		DbgPrint("DiskFilter_DispatchControl: IOCTL_VOLUME_ONLINE\n");
 		if (IoForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp) &&
 			NT_SUCCESS(Irp->IoStatus.Status) &&
 			IsProtectedVolume(DeviceObject) &&
@@ -97,6 +112,10 @@ NTSTATUS DiskFilter_DispatchControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		Status = Irp->IoStatus.Status;
 		IoCompleteRequest(Irp, IO_NO_INCREMENT);
 		return Status;
+	case IOCTL_VOLUME_OFFLINE:
+		DbgPrint("DiskFilter_DispatchControl: IOCTL_VOLUME_OFFLINE\n");
+		// ... Flush back Cache
+		break;
 	}
 
 	IoSkipCurrentIrpStackLocation(Irp);
