@@ -1,4 +1,5 @@
 #include "Utils.h"
+#include <Ntdddisk.h>
 
 NTSTATUS DiskFilter_QueryVolumeCompletion (PDEVICE_OBJECT DeviceObject,
 										   PIRP Irp,
@@ -32,10 +33,42 @@ NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 	IO_STATUS_BLOCK ios;
 	PIRP   Irp	= NULL;
 	KEVENT Event;
+	PARTITION_INFORMATION PartitionInfo;
 	PDISKFILTER_DEVICE_EXTENSION DevExt = (PDISKFILTER_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
 	DbgPrint(": DiskFilter_QueryVolumeInfo: Enter\n");
-	// Build IRP to get DBR
+	// Build IRP to get PartitionLength
+	KeInitializeEvent(&Event, NotificationEvent, FALSE);
+	Irp = IoBuildDeviceIoControlRequest(
+		IOCTL_DISK_GET_PARTITION_INFO,
+		DevExt->PhysicalDeviceObject,
+		NULL,
+		0,
+		&PartitionInfo,
+		sizeof(PARTITION_INFORMATION),
+		FALSE,
+		&Event,
+		&ios
+	);
+	if (NULL == Irp)
+	{
+		DbgPrint("Build IOCTL IRP failed!\n");
+		Status = STATUS_UNSUCCESSFUL;
+		return Status;
+	}
+	if (IoCallDriver(DevExt->PhysicalDeviceObject, Irp) == STATUS_PENDING)
+	{
+		KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+		if (!NT_SUCCESS(Irp->IoStatus.Status))
+		{
+			DbgPrint("Forward IOCTL IRP failed!\n");
+			Status = STATUS_UNSUCCESSFUL;
+			goto ERROUT;
+		}
+	}
+	DevExt->TotalSize = PartitionInfo.PartitionLength;
+
+	// Build IRP to get DBR to get SectorSize
 	KeInitializeEvent(&Event, NotificationEvent, FALSE);
 	Irp = IoBuildAsynchronousFsdRequest(
 		IRP_MJ_READ,
@@ -51,7 +84,6 @@ NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 		Status = STATUS_UNSUCCESSFUL;
 		goto ERROUT;
 	}
-
 	IoSetCompletionRoutine(Irp, DiskFilter_QueryVolumeCompletion, &Event, TRUE, TRUE, TRUE);
 	if (IoCallDriver(DevExt->PhysicalDeviceObject, Irp) == STATUS_PENDING)
 	{
@@ -70,23 +102,18 @@ NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 		DbgPrint(": Current file system is NTFS\n");
 		DevExt->SectorSize = pNtfsBootSector->BytesPerSector;
 		DevExt->ClusterSize = DevExt->SectorSize * pNtfsBootSector->SectorsPerCluster;
-		DevExt->TotalSize.QuadPart = DevExt->SectorSize * pNtfsBootSector->TotalSectors;
 	}
 	else if (*(ULONG32*)FAT32FLG == *(ULONG32*)&DBR[FAT32_SIG_OFFSET])
 	{
 		DbgPrint(": Current file system is FAT32\n");
 		DevExt->SectorSize = pFat32BootSector->BytesPerSector;
 		DevExt->ClusterSize = DevExt->SectorSize * pFat32BootSector->SectorsPerCluster;
-		DevExt->TotalSize.QuadPart = (DevExt->SectorSize*
-			pFat32BootSector->LargeSectors + pFat32BootSector->Sectors);
 	}
 	else if (*(ULONG32*)FAT16FLG == *(ULONG32*)&DBR[FAT16_SIG_OFFSET])
 	{
 		DbgPrint(": Current file system is FAT16\n");
 		DevExt->SectorSize = pFat16BootSector->BytesPerSector;
 		DevExt->ClusterSize = DevExt->SectorSize * pFat16BootSector->SectorsPerCluster;
-		DevExt->TotalSize.QuadPart = DevExt->SectorSize *
-			pFat16BootSector->LargeSectors + pFat16BootSector->Sectors;
 	}
 	else
 	{
@@ -94,11 +121,11 @@ NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 		DbgPrint("file system can't be recongnized\n");
 		Status = STATUS_UNSUCCESSFUL;
 	}
+
+	DbgPrint(": Sector = %d, Cluster = %d, Total = %I64d\n",
+				DevExt->SectorSize, DevExt->ClusterSize, DevExt->TotalSize);
+
 ERROUT:
-
-	DbgPrint(": Sector Size = %d, Volume Total size = Hi(%ld)Lo(%ld)\n",
-		DevExt->SectorSize, DevExt->TotalSize.HighPart, DevExt->TotalSize.LowPart);
-
 	if ((DevExt->LowerDeviceObject->Flags & DO_DIRECT_IO) &&
 		(Irp->MdlAddress != NULL))
 	{
