@@ -222,75 +222,62 @@ l_error:
 	return STATUS_UNSUCCESSFUL;
 }
 
-NTSTATUS DiskFilter_InitBitMapAndCreateThread(PDISKFILTER_DEVICE_EXTENSION DevExt)
+NTSTATUS DiskFilter_InitCacheAndCreateThread(PDISKFILTER_DEVICE_EXTENSION DevExt)
 {
 	NTSTATUS Status;
 	HANDLE hThread;
 	DbgPrint(": DiskFilter_InitBitMapAndCreateThread: Enter\n");
 
-	RtlInitializeBitMap(
-		&DevExt->Bitmap,
-		(PULONG)ExAllocatePoolWithTag(NonPagedPool,
-			(ULONG)((DevExt->TotalSize.QuadPart / DevExt->SectorSize / 8 + 1) / sizeof(ULONG) * sizeof(ULONG)),
-			DISK_FILTER_TAG), // Buffer, Size In Bytes.
-		(ULONG)(DevExt->TotalSize.QuadPart / DevExt->SectorSize) // Number of bites.
-	);
-	if (DevExt->Bitmap.Buffer)
+	if (InitCachePool(&DevExt->CachePool) == FALSE)
 	{
-		RtlClearAllBits(&DevExt->Bitmap);
-		if (NT_SUCCESS(
-				PsCreateSystemThread(&hThread,
-				(ULONG)0, NULL, NULL, NULL,
-				DiskFilter_ReadWriteThread, (PVOID)DevExt))
-			)
-		{
-			//	Reference thread object.
-			Status = ObReferenceObjectByHandle(
-				hThread,
-				THREAD_ALL_ACCESS,
-				NULL,
-				KernelMode,
-				&DevExt->RwThreadObject,
-				NULL
-				);
-			if (NT_SUCCESS(Status)) // Everything is OK.
-			{
-				ZwClose(hThread);
-				return STATUS_SUCCESS;
-			}
-
-			//	Terminate thread.
-			DevExt->bTerminalThread = TRUE;
-			KeSetEvent(&DevExt->RwThreadEvent, (KPRIORITY)0, FALSE);
-
-			ZwClose(hThread);
-			return STATUS_UNSUCCESSFUL;
-		}
-		//	Create Thread failed. free bitmap.
-		ExFreePoolWithTag(DevExt->Bitmap.Buffer, DISK_FILTER_TAG);
-		DevExt->RwThreadObject = 0;
-		DevExt->Bitmap.Buffer = 0;
+		DbgPrint("Initial Cache Pool Failed!\n");
+		return STATUS_UNSUCCESSFUL;
 	}
-	//	Allocate bitmap fiailed!
-	DbgPrint("Allocate bitmap failed !\n");
+	Status = PsCreateSystemThread (
+				&hThread,
+				(ULONG)0, NULL, NULL, NULL,
+				DiskFilter_ReadWriteThread, (PVOID)DevExt
+			);
+	if (!NT_SUCCESS(Status))
+	{
+		DbgPrint("Create R/W Failed!\n");
+		goto l_error;
+	}
+	// Reference thread object.
+	Status = ObReferenceObjectByHandle(
+		hThread,
+		THREAD_ALL_ACCESS,
+		NULL,
+		KernelMode,
+		&DevExt->RwThreadObject,
+		NULL
+	);
+	ZwClose(hThread);
+	if (NT_SUCCESS(Status))
+	{
+		return STATUS_SUCCESS;
+	}
+l_error:
+	// Terminate thread.
+	DevExt->RwThreadObject = 0;
+	DevExt->bTerminalThread = TRUE;
+	KeSetEvent(&DevExt->RwThreadEvent, (KPRIORITY)0, FALSE);
 	return STATUS_UNSUCCESSFUL;
 }
 
 VOID DiskFilter_ReadWriteThread(PVOID Context)
 {
-	NTSTATUS Status;
-	PDISKFILTER_DEVICE_EXTENSION DevExt = (PDISKFILTER_DEVICE_EXTENSION)Context;
-	PLIST_ENTRY ReqEntry = NULL;
 	PIRP Irp = NULL;
+	PLIST_ENTRY ReqEntry = NULL;
 	PIO_STACK_LOCATION IrpSp;
-	PUCHAR buf;
+	PUCHAR SysBuf;
 	LARGE_INTEGER Offset;
 	ULONG Length;
-	PUCHAR fileBuf;
+	PDISKFILTER_DEVICE_EXTENSION DevExt = (PDISKFILTER_DEVICE_EXTENSION)Context;
 
 	DbgPrint(": Start Read Write Thread\n");
 
-	//	set thread priority.
+	// set thread priority.
 	KeSetPriorityThread(KeGetCurrentThread(), LOW_REALTIME_PRIORITY);
 	for (;;)
 	{
@@ -310,11 +297,11 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 			// Get system buffer address
 			if (Irp->MdlAddress)
 			{
-				buf = (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+				SysBuf = (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
 			}
 			else
 			{
-				buf = (PUCHAR)Irp->UserBuffer;
+				SysBuf = (PUCHAR)Irp->UserBuffer;
 			}
 			// Get offset and length
 			if (IRP_MJ_READ == IrpSp->MajorFunction)
@@ -333,7 +320,7 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 				Length = 0;
 			}
 
-			if (!buf || !Length) // Ignore this IRP.
+			if (!SysBuf || !Length) // Ignore this IRP.
 			{
 				IoSkipCurrentIrpStackLocation(Irp);
 				IoCallDriver(DevExt->LowerDeviceObject, Irp);
@@ -341,59 +328,26 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 			}
 		#if 0
 			if (IrpSp->MajorFunction == IRP_MJ_READ)
-				DbgPrint("[R ");
+				DbgPrint("[R off(%I64d) len(%x)]\n", Offset.QuadPart, Length)
 			else
-				DbgPrint("[W ");
-			DbgPrint("off(%I64d) len(%x)]\n", Offset.QuadPart, Length);
+				DbgPrint("[W off(%I64d) len(%x)]\n", Offset.QuadPart, Length)
 		#endif
 			// Read Request
 			if (IrpSp->MajorFunction == IRP_MJ_READ)
 			{
-				// No match: Pass to lower device & update cache
-				if (RtlAreBitsClear(&DevExt->Bitmap,
-					(ULONG)(Offset.QuadPart/DevExt->SectorSize),
-					Length / DevExt->SectorSize) || 1) // !!!
+				// Cache Full Matched
+				if (QueryAndCopyFromCachePool(
+						&DevExt->CachePool,
+						SysBuf,
+						Offset,
+						Length) == TRUE)
 				{
-					Irp->IoStatus.Information = 0;
-					Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-
-					IoForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp);
-					if (NT_SUCCESS(Irp->IoStatus.Status))
-					{
-						//TODO: Update the Cache with 'buf'
-						Irp->IoStatus.Status = STATUS_SUCCESS;
-						Irp->IoStatus.Information = Length;
-					}
+					DbgPrint("cache hit\n");
+					Irp->IoStatus.Status = STATUS_SUCCESS;
+					Irp->IoStatus.Information = Length;
 					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
 					continue;
 				}
-				// Full match: Complete the IRP, not pass to lower
-				else if (RtlAreBitsSet(&DevExt->Bitmap,
-						 (ULONG)(Offset.QuadPart / DevExt->SectorSize),
-						 Length / DevExt->SectorSize))
-				{
-					Irp->IoStatus.Information = 0;
-					Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-
-					fileBuf = (PUCHAR)ExAllocatePoolWithTag(NonPagedPool,
-						Length * DevExt->SectorSize, DISK_FILTER_TAG);
-					if (fileBuf)
-					{
-						Status = STATUS_SUCCESS;
-						//TODO: get the cache to fileBuf!!!
-						if (NT_SUCCESS(Status))
-						{
-							RtlCopyMemory(buf, fileBuf, Length);
-							Irp->IoStatus.Information = Length;
-							Irp->IoStatus.Status = STATUS_SUCCESS;
-						}
-						ExFreePoolWithTag(fileBuf, DISK_FILTER_TAG);
-						fileBuf = 0;
-					}
-					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-					continue;
-				}
-				// Mixed: Pass to lower device & update cache
 				else
 				{
 					Irp->IoStatus.Information = 0;
@@ -402,7 +356,10 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 					IoForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp);
 					if (NT_SUCCESS(Irp->IoStatus.Status))
 					{
-						//TODO: Update the Cache with buf
+						UpdataCachePool(&DevExt->CachePool,
+										SysBuf,
+										Offset,
+										Length);
 						Irp->IoStatus.Status = STATUS_SUCCESS;
 						Irp->IoStatus.Information = Length;
 					}
@@ -413,30 +370,25 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 			// Write Request
 			else
 			{
-				IoSkipCurrentIrpStackLocation(Irp);
-				IoCallDriver(DevExt->LowerDeviceObject, Irp);
-				continue;
-
-				// TODO: Merge the buf with Cache
-				Status = STATUS_SUCCESS; //...
-				if (NT_SUCCESS(Status) &&
-					(Offset.QuadPart + Length < DevExt->TotalSize.QuadPart))
+				if (Offset.QuadPart + Length < DevExt->TotalSize.QuadPart)
 				{
-					RtlSetBits(&DevExt->Bitmap,
-						(ULONG)(Offset.QuadPart / DevExt->SectorSize),
-						Length / DevExt->SectorSize);
-					Irp->IoStatus.Status = STATUS_SUCCESS;
-					Irp->IoStatus.Information = Length;
+					UpdataCachePool(&DevExt->CachePool,
+									SysBuf,
+									Offset,
+									Length);
+					IoSkipCurrentIrpStackLocation(Irp);
+					IoCallDriver(DevExt->LowerDeviceObject, Irp);
+					continue;
 				}
 				else
 				{
 					Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
 					Irp->IoStatus.Information = 0;
+					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+					continue;
 				}
-				IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-				continue;
 			}
-		}	//	End of travel list.
-	}	//	End waiting request.
+		} // End of travel list.
+	}
 	return;
 }

@@ -3,5 +3,5 @@ TARGETTYPE=DRIVER
 
 SOURCES=DiskFilter.c	\
         Dispatch.c		\
-		Utils.c
-
+		Utils.c			\
+		Cache.c

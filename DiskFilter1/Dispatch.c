@@ -61,9 +61,9 @@ NTSTATUS DiskFilter_DispatchReadWrite(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
 static BOOLEAN IsProtectedVolume(PDEVICE_OBJECT DeviceObject)
 {
+	ULONG i;
 	BOOLEAN bIsProtected = FALSE;
 	PDISKFILTER_DEVICE_EXTENSION DevExt = (PDISKFILTER_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
-	ULONG i;
 	PDISKFILTER_DRIVER_EXTENSION DrvExt = (PDISKFILTER_DRIVER_EXTENSION)
 		IoGetDriverObjectExtension(DeviceObject->DriverObject, DISKFILTER_DRIVER_EXTENSION_ID);
 
@@ -91,8 +91,7 @@ static BOOLEAN IsProtectedVolume(PDEVICE_OBJECT DeviceObject)
 NTSTATUS DiskFilter_DispatchControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
 	NTSTATUS Status;
-	PDISKFILTER_DEVICE_EXTENSION DevExt = (PDISKFILTER_DEVICE_EXTENSION)
-		DeviceObject->DeviceExtension;
+	PDISKFILTER_DEVICE_EXTENSION DevExt = (PDISKFILTER_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	PAGED_CODE();
 
@@ -104,7 +103,7 @@ NTSTATUS DiskFilter_DispatchControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 			NT_SUCCESS(Irp->IoStatus.Status) &&
 			IsProtectedVolume(DeviceObject) &&
 			NT_SUCCESS(DiskFilter_QueryVolumeInfo(DeviceObject)) &&
-			NT_SUCCESS(DiskFilter_InitBitMapAndCreateThread(DevExt)) // create thread
+			NT_SUCCESS(DiskFilter_InitCacheAndCreateThread(DevExt))
 			)
 		{
 			DbgPrint(": Protected\n");
@@ -216,10 +215,6 @@ NTSTATUS DiskFilter_DispatchPnp(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 				KeSetEvent(&DevExt->RwThreadEvent, (KPRIORITY)0, FALSE);
 				KeWaitForSingleObject(DevExt->RwThreadObject, Executive, KernelMode, FALSE, NULL);
 				ObDereferenceObject(DevExt->RwThreadObject);
-			}
-			if (DevExt->Bitmap.Buffer)
-			{
-				ExFreePoolWithTag(DevExt->Bitmap.Buffer, DISK_FILTER_TAG);
 			}
 			if (DevExt->LowerDeviceObject)
 			{

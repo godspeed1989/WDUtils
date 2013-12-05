@@ -9,6 +9,7 @@ extern "C"
 #include <Ntddk.h>
 #include <Ntddvol.h>
 #include <Wdm.h>
+#include "Cache.h"
 
 #ifdef __cplusplus
 }
@@ -43,11 +44,12 @@ typedef struct _DISKFILTER_DEVICE_EXTENSION
 	LARGE_INTEGER	TotalSize;		//	Total size of this volume in bytes.
 	ULONG			ClusterSize;	//	Cluster size of this volume in bytes.
 	ULONG			SectorSize;		//	Sector size of this volume in bytes.
-	RTL_BITMAP		Bitmap;
 
 	LIST_ENTRY		RwList;
 	PVOID			RwThreadObject;
 	BOOLEAN			bTerminalThread;
 	KEVENT			RwThreadEvent;
 	KSPIN_LOCK		RwSpinLock;
+
+	CACHE_POOL		CachePool;
 } DISKFILTER_DEVICE_EXTENSION, *PDISKFILTER_DEVICE_EXTENSION;

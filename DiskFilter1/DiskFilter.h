@@ -39,12 +39,12 @@ NTSTATUS
 	);
 
 NTSTATUS
-	DiskFilter_InitBitMapAndCreateThread(
+	DiskFilter_InitCacheAndCreateThread (
 		PDISKFILTER_DEVICE_EXTENSION DevExt
 	);
 
 VOID
-	DiskFilter_ReadWriteThread(PVOID Context);
+	DiskFilter_ReadWriteThread (PVOID Context);
 
 #pragma alloc_text("INIT",  DriverEntry)
 #pragma alloc_text("PAGED", DiskFilter_AddDevice)
