@@ -9,7 +9,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject,
 	PDISKFILTER_DRIVER_EXTENSION DrvExt = NULL;
 	ULONG ClientId;
 
-	for (i = 0; i!=IRP_MJ_MAXIMUM_FUNCTION; ++i)
+	for (i = 0; i<=IRP_MJ_MAXIMUM_FUNCTION; ++i)
 	{
 		DriverObject->MajorFunction[i] = DiskFilter_DispatchDefault;
 	}
