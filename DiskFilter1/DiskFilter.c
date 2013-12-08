@@ -359,7 +359,8 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 						UpdataCachePool(&DevExt->CachePool,
 										SysBuf,
 										Offset,
-										Length);
+										Length,
+										_READ_);
 						Irp->IoStatus.Status = STATUS_SUCCESS;
 						Irp->IoStatus.Information = Length;
 					}
@@ -375,7 +376,8 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 					UpdataCachePool(&DevExt->CachePool,
 									SysBuf,
 									Offset,
-									Length);
+									Length,
+									_WRITE_);
 					IoSkipCurrentIrpStackLocation(Irp);
 					IoCallDriver(DevExt->LowerDeviceObject, Irp);
 					continue;
