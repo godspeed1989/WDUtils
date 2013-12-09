@@ -43,7 +43,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject,
 
 	IoRegisterBootDriverReinitialization(DriverObject, DiskFilter_DriverReinitializeRoutine, NULL);
 
-	DbgPrint("Service key :\n%wZ\n", &DrvExt->ServiceKeyName);
+	KdPrint(("Service key :\n%wZ\n", &DrvExt->ServiceKeyName));
 	return STATUS_SUCCESS;
 }
 
@@ -113,7 +113,7 @@ NTSTATUS DiskFilter_QueryConfig( PWCHAR ProtectedVolume,
 				 ProtectedVolume[i] == CacheVolume[0]
 				)
 			{
-				DbgPrint("Check configuration failed!\n");
+				KdPrint(("Check configuration failed!\n"));
 				ProtectedVolume[ustrProtectedVolume.Length] = 0;
 				return STATUS_UNSUCCESSFUL;
 			}
@@ -121,7 +121,7 @@ NTSTATUS DiskFilter_QueryConfig( PWCHAR ProtectedVolume,
 	}
 	else
 	{
-		DbgPrint("Check configuration failed!\n");
+		KdPrint(("Check configuration failed!\n"));
 		return STATUS_UNSUCCESSFUL;
 	}
 	return STATUS_SUCCESS;
@@ -138,20 +138,20 @@ VOID DiskFilter_DriverReinitializeRoutine (
 
 	UNREFERENCED_PARAMETER(Context);
 	UNREFERENCED_PARAMETER(Count);
-	DbgPrint("Start Reinitialize...\n");
+	KdPrint(("Start Reinitialize...\n"));
 
 	//	Enumerate device.
 	for(; DeviceObject; DeviceObject = DeviceObject->NextDevice)
 	{
 		DevExt = (PDISKFILTER_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
-		DbgPrint(" -> [%wZ]", &DevExt->VolumeDosName);
+		KdPrint((" -> [%wZ]", &DevExt->VolumeDosName));
 		if (DevExt->bIsProtectedVolume)
 		{
-			DbgPrint(" Protected\n");
+			KdPrint((" Protected\n"));
 		}
 		else
 		{
-			DbgPrint("\n");
+			KdPrint(("\n"));
 		}
 	}
 }
@@ -168,7 +168,7 @@ NTSTATUS DiskFilter_AddDevice(PDRIVER_OBJECT DriverObject,
 	PDEVICE_OBJECT LowerDeviceObject = NULL;
 
 	PAGED_CODE();
-	DbgPrint("DiskFilter_AddDevice: Enter\n");
+	KdPrint(("DiskFilter_AddDevice: Enter\n"));
 
 	// Create a device
 	Status = IoCreateDevice(DriverObject,
@@ -181,7 +181,7 @@ NTSTATUS DiskFilter_AddDevice(PDRIVER_OBJECT DriverObject,
 							);
 	if (!NT_SUCCESS(Status))
 	{
-		DbgPrint("Create device failed");
+		KdPrint(("Create device failed"));
 		goto l_error;
 	}
 
@@ -192,7 +192,7 @@ NTSTATUS DiskFilter_AddDevice(PDRIVER_OBJECT DriverObject,
 	LowerDeviceObject = IoAttachDeviceToDeviceStack(DeviceObject, PhysicalDeviceObject);
 	if (LowerDeviceObject == NULL)
 	{
-		DbgPrint("Attach device failed...\n");
+		KdPrint(("Attach device failed...\n"));
 		goto l_error;
 	}
 
@@ -226,11 +226,11 @@ NTSTATUS DiskFilter_InitCacheAndCreateThread(PDISKFILTER_DEVICE_EXTENSION DevExt
 {
 	NTSTATUS Status;
 	HANDLE hThread;
-	DbgPrint(": DiskFilter_InitBitMapAndCreateThread: Enter\n");
+	KdPrint((": DiskFilter_InitBitMapAndCreateThread: Enter\n"));
 
 	if (InitCachePool(&DevExt->CachePool) == FALSE)
 	{
-		DbgPrint("Initial Cache Pool Failed!\n");
+		KdPrint(("Initial Cache Pool Failed!\n"));
 		return STATUS_UNSUCCESSFUL;
 	}
 	Status = PsCreateSystemThread (
@@ -240,7 +240,7 @@ NTSTATUS DiskFilter_InitCacheAndCreateThread(PDISKFILTER_DEVICE_EXTENSION DevExt
 			);
 	if (!NT_SUCCESS(Status))
 	{
-		DbgPrint("Create R/W Failed!\n");
+		KdPrint(("Create R/W Failed!\n"));
 		goto l_error;
 	}
 	// Reference thread object.
@@ -275,7 +275,7 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 	ULONG Length;
 	PDISKFILTER_DEVICE_EXTENSION DevExt = (PDISKFILTER_DEVICE_EXTENSION)Context;
 
-	DbgPrint(": Start Read Write Thread\n");
+	KdPrint((": Start Read Write Thread\n"));
 
 	// set thread priority.
 	KeSetPriorityThread(KeGetCurrentThread(), LOW_REALTIME_PRIORITY);
@@ -328,9 +328,9 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 			}
 		#if 0
 			if (IrpSp->MajorFunction == IRP_MJ_READ)
-				DbgPrint("[R off(%I64d) len(%x)]\n", Offset.QuadPart, Length)
+				KdPrint(("[R off(%I64d) len(%x)]\n", Offset.QuadPart, Length));
 			else
-				DbgPrint("[W off(%I64d) len(%x)]\n", Offset.QuadPart, Length)
+				KdPrint(("[W off(%I64d) len(%x)]\n", Offset.QuadPart, Length));
 		#endif
 			// Read Request
 			if (IrpSp->MajorFunction == IRP_MJ_READ)
@@ -342,7 +342,7 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 						Offset,
 						Length) == TRUE)
 				{
-					DbgPrint("cache hit\n");
+					KdPrint(("cache hit\n"));
 					Irp->IoStatus.Status = STATUS_SUCCESS;
 					Irp->IoStatus.Information = Length;
 					IoCompleteRequest(Irp, IO_DISK_INCREMENT);

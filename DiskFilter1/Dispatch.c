@@ -15,20 +15,20 @@ NTSTATUS DiskFilter_DispatchPower(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
 	PAGED_CODE();
-	DbgPrint("DiskFilter_DispatchPower: ");
+	KdPrint(("DiskFilter_DispatchPower: "));
 	if (IrpSp->Parameters.Power.Type == SystemPowerState)
 	{
-		DbgPrint("SystemPowerState...\n");
+		KdPrint(("SystemPowerState...\n"));
 		if (PowerSystemShutdown == IrpSp->Parameters.Power.State.SystemState)
 		{
-			DbgPrint("System is shutting down...\n");
+			KdPrint(("System is shutting down...\n"));
 			// ... Flush back Cache
 		}
 	}
 	else if (IrpSp->Parameters.Power.Type == DevicePowerState)
-		DbgPrint("DevicePowerState...\n");
+		KdPrint(("DevicePowerState...\n"));
 	else
-		DbgPrint("\n");
+		KdPrint(("\n"));
 
 #if WINVER<_WIN32_WINNT_VISTA
 	PoStartNextPowerIrp(Irp);
@@ -75,7 +75,7 @@ static BOOLEAN IsProtectedVolume(PDEVICE_OBJECT DeviceObject)
 	{
 		if (NT_SUCCESS(IoVolumeDeviceToDosName(DevExt->PhysicalDeviceObject, &DevExt->VolumeDosName)))
 		{
-			DbgPrint(": [%wZ] Online\n", &DevExt->VolumeDosName);
+			KdPrint((": [%wZ] Online\n", &DevExt->VolumeDosName));
 			for (i = 0; DrvExt->ProtectedVolumes[i]; ++i)
 			{
 				if (DrvExt->ProtectedVolumes[i] == DevExt->VolumeDosName.Buffer[0])
@@ -98,7 +98,7 @@ NTSTATUS DiskFilter_DispatchControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	switch (IrpSp->Parameters.DeviceIoControl.IoControlCode)
 	{
 	case IOCTL_VOLUME_ONLINE:
-		DbgPrint("DiskFilter_DispatchControl: IOCTL_VOLUME_ONLINE\n");
+		KdPrint(("DiskFilter_DispatchControl: IOCTL_VOLUME_ONLINE\n"));
 		if (IoForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp) &&
 			NT_SUCCESS(Irp->IoStatus.Status) &&
 			IsProtectedVolume(DeviceObject) &&
@@ -106,14 +106,14 @@ NTSTATUS DiskFilter_DispatchControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 			NT_SUCCESS(DiskFilter_InitCacheAndCreateThread(DevExt))
 			)
 		{
-			DbgPrint(": Protected\n");
+			KdPrint((": Protected\n"));
 			DevExt->bIsProtectedVolume = TRUE;
 		}
 		Status = Irp->IoStatus.Status;
 		IoCompleteRequest(Irp, IO_NO_INCREMENT);
 		return Status;
 	case IOCTL_VOLUME_OFFLINE:
-		DbgPrint("DiskFilter_DispatchControl: IOCTL_VOLUME_OFFLINE\n");
+		KdPrint(("DiskFilter_DispatchControl: IOCTL_VOLUME_OFFLINE\n"));
 		// ... Flush back Cache
 		break;
 	}
@@ -137,7 +137,7 @@ NTSTATUS DiskFilter_DispatchPnp(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	switch(IrpSp->MinorFunction)
 	{
 	case IRP_MN_START_DEVICE:
-		DbgPrint("Pnp: Start Device...\n");
+		KdPrint(("Pnp: Start Device...\n"));
 		status = Irp->IoStatus.Status;
 		DevExt->CurrentPnpState = IRP_MN_START_DEVICE;
 		IoSkipCurrentIrpStackLocation(Irp);
@@ -145,7 +145,7 @@ NTSTATUS DiskFilter_DispatchPnp(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	case IRP_MN_DEVICE_USAGE_NOTIFICATION :
 		setPageable = FALSE;
 		bAddPageFile = IrpSp->Parameters.UsageNotification.InPath;
-		DbgPrint("Pnp: Paging file request...\n");
+		KdPrint(("Pnp: Paging file request...\n"));
 		if (IrpSp->Parameters.UsageNotification.Type == DeviceUsageTypePaging)
 		//	Indicated it will create or delete a paging file.
 		{
@@ -204,7 +204,7 @@ NTSTATUS DiskFilter_DispatchPnp(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		}
 		break;
 	case IRP_MN_REMOVE_DEVICE:
-		DbgPrint("Removing device ...\n");
+		KdPrint(("Removing device ...\n"));
 		IoForwardIrpSynchronously(DeviceObject, Irp);
 		status = Irp->IoStatus.Status;
 		if (NT_SUCCESS(status))

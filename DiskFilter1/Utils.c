@@ -36,7 +36,7 @@ NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 	PARTITION_INFORMATION PartitionInfo;
 	PDISKFILTER_DEVICE_EXTENSION DevExt = (PDISKFILTER_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
-	DbgPrint(": DiskFilter_QueryVolumeInfo: Enter\n");
+	KdPrint((": DiskFilter_QueryVolumeInfo: Enter\n"));
 	// Build IRP to get PartitionLength
 	KeInitializeEvent(&Event, NotificationEvent, FALSE);
 	Irp = IoBuildDeviceIoControlRequest(
@@ -52,7 +52,7 @@ NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 	);
 	if (NULL == Irp)
 	{
-		DbgPrint("Build IOCTL IRP failed!\n");
+		KdPrint(("Build IOCTL IRP failed!\n"));
 		Status = STATUS_UNSUCCESSFUL;
 		return Status;
 	}
@@ -61,7 +61,7 @@ NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 		KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
 		if (!NT_SUCCESS(Irp->IoStatus.Status))
 		{
-			DbgPrint("Forward IOCTL IRP failed!\n");
+			KdPrint(("Forward IOCTL IRP failed!\n"));
 			Status = STATUS_UNSUCCESSFUL;
 			goto ERROUT;
 		}
@@ -80,7 +80,7 @@ NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 	);
 	if (NULL == Irp)
 	{
-		DbgPrint("Build IRP failed!\n");
+		KdPrint(("Build IRP failed!\n"));
 		Status = STATUS_UNSUCCESSFUL;
 		goto ERROUT;
 	}
@@ -90,7 +90,7 @@ NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 		KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
 		if (!NT_SUCCESS(Irp->IoStatus.Status))
 		{
-			DbgPrint("Forward IRP failed!\n");
+			KdPrint(("Forward IRP failed!\n"));
 			Status = STATUS_UNSUCCESSFUL;
 			goto ERROUT;
 		}
@@ -99,31 +99,31 @@ NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 	// Distinguish the file system.
 	if (*(ULONG32*)NTFSFLG == *(ULONG32*)&DBR[NTFS_SIG_OFFSET])
 	{
-		DbgPrint(": Current file system is NTFS\n");
+		KdPrint((": Current file system is NTFS\n"));
 		DevExt->SectorSize = pNtfsBootSector->BytesPerSector;
 		DevExt->ClusterSize = DevExt->SectorSize * pNtfsBootSector->SectorsPerCluster;
 	}
 	else if (*(ULONG32*)FAT32FLG == *(ULONG32*)&DBR[FAT32_SIG_OFFSET])
 	{
-		DbgPrint(": Current file system is FAT32\n");
+		KdPrint((": Current file system is FAT32\n"));
 		DevExt->SectorSize = pFat32BootSector->BytesPerSector;
 		DevExt->ClusterSize = DevExt->SectorSize * pFat32BootSector->SectorsPerCluster;
 	}
 	else if (*(ULONG32*)FAT16FLG == *(ULONG32*)&DBR[FAT16_SIG_OFFSET])
 	{
-		DbgPrint(": Current file system is FAT16\n");
+		KdPrint((": Current file system is FAT16\n"));
 		DevExt->SectorSize = pFat16BootSector->BytesPerSector;
 		DevExt->ClusterSize = DevExt->SectorSize * pFat16BootSector->SectorsPerCluster;
 	}
 	else
 	{
 		//	Unknown file system.
-		DbgPrint("file system can't be recongnized\n");
+		KdPrint(("file system can't be recongnized\n"));
 		Status = STATUS_UNSUCCESSFUL;
 	}
 
-	DbgPrint(": Sector = %d, Cluster = %d, Total = %I64d\n",
-				DevExt->SectorSize, DevExt->ClusterSize, DevExt->TotalSize);
+	KdPrint((": Sector = %d, Cluster = %d, Total = %I64d\n",
+				DevExt->SectorSize, DevExt->ClusterSize, DevExt->TotalSize));
 
 ERROUT:
 	if ((DevExt->LowerDeviceObject->Flags & DO_DIRECT_IO) &&

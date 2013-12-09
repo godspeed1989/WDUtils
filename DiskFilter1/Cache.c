@@ -1,6 +1,6 @@
 #include "Cache.h"
 
-BOOLEAN InitCachePool(PCAHCE_POOL CachePool)
+BOOLEAN InitCachePool(PCACHE_POOL CachePool)
 {
 	ULONG i;
 	CachePool->Used = 0;
@@ -19,7 +19,7 @@ BOOLEAN InitCachePool(PCAHCE_POOL CachePool)
 	return TRUE;
 }
 
-VOID DestroyCachePool(PCAHCE_POOL CachePool)
+VOID DestroyCachePool(PCACHE_POOL CachePool)
 {
 	CachePool->Used = 0;
 	CachePool->Size = 0;
@@ -29,7 +29,7 @@ VOID DestroyCachePool(PCAHCE_POOL CachePool)
 /**
  * Query a Cache Block from Pool By its Index
  */
-static BOOLEAN QueryPoolByIndex(PCAHCE_POOL CachePool, LONGLONG Index, PCACHE_BLOCK *ppBlock)
+static BOOLEAN QueryPoolByIndex(PCACHE_POOL CachePool, LONGLONG Index, PCACHE_BLOCK *ppBlock)
 {
 	ULONG i;
 	for (i = 0; i < CachePool->Size; i++)
@@ -43,12 +43,12 @@ static BOOLEAN QueryPoolByIndex(PCAHCE_POOL CachePool, LONGLONG Index, PCACHE_BL
 	return FALSE;
 }
 
-static BOOLEAN IsEmpty(PCAHCE_POOL CachePool)
+static BOOLEAN IsEmpty(PCACHE_POOL CachePool)
 {
 	return (0 == CachePool->Used);
 }
 
-static BOOLEAN IsFull(PCAHCE_POOL CachePool)
+static BOOLEAN IsFull(PCACHE_POOL CachePool)
 {
 	return (CachePool->Size == CachePool->Used);
 }
@@ -56,7 +56,7 @@ static BOOLEAN IsFull(PCAHCE_POOL CachePool)
 /**
  * Get a Free Block From Cache Pool
  */
-static PCACHE_BLOCK GetFreeBlock(PCAHCE_POOL CachePool)
+static PCACHE_BLOCK GetFreeBlock(PCACHE_POOL CachePool)
 {
 	ULONG i;
 	if (IsFull(CachePool) == TRUE)
@@ -74,7 +74,7 @@ static PCACHE_BLOCK GetFreeBlock(PCAHCE_POOL CachePool)
 /**
  * Add one Block to Cache Pool
  */
-static BOOLEAN AddOneBlockToPool(PCAHCE_POOL CachePool, LONGLONG Index, PVOID Data)
+static BOOLEAN AddOneBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 {
 	PCACHE_BLOCK pBlock;
 	if ((pBlock = GetFreeBlock(CachePool)) != NULL)
@@ -97,17 +97,16 @@ static BOOLEAN AddOneBlockToPool(PCAHCE_POOL CachePool, LONGLONG Index, PVOID Da
  * else return FALSE
  */
 BOOLEAN QueryAndCopyFromCachePool (
-	PCAHCE_POOL CachePool, PUCHAR Buf, LARGE_INTEGER Offset, ULONG Length
+	PCACHE_POOL CachePool, PUCHAR Buf, LARGE_INTEGER Offset, ULONG Length
 )
 {
 	ULONG i;
 	BOOLEAN Ret = FALSE;
 	PCACHE_BLOCK *ppInternalBlocks = NULL;
 
-	if (Offset.QuadPart % SECTOR_SIZE || Length % SECTOR_SIZE)
-	{
-		return FALSE;
-	}
+	ASSERT(Offset.QuadPart % SECTOR_SIZE == 0);
+	ASSERT(Length % SECTOR_SIZE == 0);
+
 	Offset.QuadPart /= SECTOR_SIZE;
 	Length /= SECTOR_SIZE;
 
@@ -144,58 +143,36 @@ l_error:
  * Update Cache Pool with Buffer
  */
 VOID UpdataCachePool(
-	PCAHCE_POOL CachePool, PUCHAR Buf, LARGE_INTEGER Offset, ULONG Length,
+	PCACHE_POOL CachePool, PUCHAR Buf, LARGE_INTEGER Offset, ULONG Length,
 	BOOLEAN Type
 )
 {
 	ULONG i, j, ii;
 	PCACHE_BLOCK pBlock;
-	if (Offset.QuadPart % SECTOR_SIZE || Length % SECTOR_SIZE)
-	{
-		return;
-	}
+
+	ASSERT(Offset.QuadPart % SECTOR_SIZE == 0);
+	ASSERT(Length % SECTOR_SIZE == 0);
+
 	Offset.QuadPart /= SECTOR_SIZE;
 	Length /= SECTOR_SIZE;
 
-	// READ
-	if (Type == _READ_)
+	for (i = 0; i < Length; i++)
 	{
-		for (i = 0; i < Length; i++)
+		// Update Cache Pool for the Block with same Index
+		if (IsEmpty(CachePool) == FALSE &&
+			QueryPoolByIndex(CachePool, Offset.QuadPart + i, &pBlock) == TRUE)
 		{
-			if (IsFull(CachePool) == FALSE)
-			{
-				AddOneBlockToPool(CachePool, Offset.QuadPart + i, Buf + i*SECTOR_SIZE);
-				continue;
-			}
-			else
-			{
-				// TODO: Do nothing if the Pool is Full
-				// Need a replace algorithm for [Offset.QuadPart + i]
-				return;
-			}
+			RtlCopyMemory (
+				pBlock->Data,
+				Buf + i * SECTOR_SIZE,
+				SECTOR_SIZE
+			);
+			continue;
 		}
-	}
-	// WRITE
-	else
-	{
-		for (i = 0; i < Length; i++)
+		else if (IsFull(CachePool) == FALSE)
 		{
-			// Update Cache Pool for the Block with same Index
-			if (IsEmpty(CachePool) == FALSE &&
-				QueryPoolByIndex(CachePool, Offset.QuadPart + i, &pBlock) == TRUE)
-			{
-				RtlCopyMemory (
-					pBlock->Data,
-					Buf + i * SECTOR_SIZE,
-					SECTOR_SIZE
-				);
-				continue;
-			}
-			else if (IsFull(CachePool) == FALSE)
-			{
-				AddOneBlockToPool(CachePool, Offset.QuadPart + i, Buf + i * SECTOR_SIZE);
-				continue;
-			}
+			AddOneBlockToPool(CachePool, Offset.QuadPart + i, Buf + i * SECTOR_SIZE);
+			continue;
 		}
 	}
 }
