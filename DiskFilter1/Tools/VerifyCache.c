@@ -3,7 +3,7 @@
 #include <time.h>
 
 #define		MAX_SECTOR	20000
-#define		TEST_LOOPS	20000
+#define		TEST_LOOPS	10000
 #pragma pack(1)
 typedef union _SECTOR
 {

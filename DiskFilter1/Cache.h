@@ -29,7 +29,7 @@
 	} LARGE_INTEGER, *PLARGE_INTEGER;
 #endif
 
-#define CACHE_POOL_SIZE						4096
+#define CACHE_POOL_SIZE						8192
 #define SECTOR_SIZE							512
 #define _READ_								TRUE
 #define _WRITE_								FALSE
