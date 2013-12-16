@@ -15,13 +15,32 @@ NPAGED_LOOKASIDE_LIST	ContextLookaside;
 //----------------------------------------------------------------------
 //                         R O U T I N E S
 //----------------------------------------------------------------------
-
 VOID
 DriverUnload(PDRIVER_OBJECT driver)
 {
-	DbgPrint("DMon: unloading\n");
-	g_bStartMon = FALSE;
-	//todo: release hooked device
+	KIRQL			OldIrql;
+	PDRIVER_ENTRY	DrvEntry;
+	UNICODE_STRING	SymbolicLinkName;
+	DbgPrint("DMon: unloading ...\n");
+
+	RtlInitUnicodeString(&SymbolicLinkName, L"\\DosDevices\\Dmon");
+	IoDeleteSymbolicLink(&SymbolicLinkName);
+
+	OldIrql = KfAcquireSpinLock(&HashLock);
+	DrvEntry = g_pDrvObjList;
+	while ( DrvEntry )
+	{
+		// Restore Dispatch Functions
+		RtlMoveMemory ( DrvEntry->DriverObject->MajorFunction,
+						DrvEntry->DriverDispatch,
+						IRP_MJ_MAXIMUM_FUNCTION * sizeof(void*) );
+		DrvEntry = DrvEntry->Next;
+	}
+	KfReleaseSpinLock(&HashLock, OldIrql);
+
+	IoDeleteDevice(g_pDeviceObject);
+	ExDeleteNPagedLookasideList(&ContextLookaside);
+	DbgPrint("DMon: unloaded\n");
 }
 
 NTSTATUS

@@ -44,6 +44,7 @@ typedef struct _DEVICE_ENTRY
 //                     F U N C T I O N S
 //----------------------------------------------------------------------
 DRIVER_INITIALIZE		DriverEntry;
+DRIVER_UNLOAD			DriverUnload;
 DRIVER_DISPATCH			DMReadWrite;
 DRIVER_DISPATCH			DMCreateClose;
 DRIVER_DISPATCH			DMDeviceControl;
