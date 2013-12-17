@@ -31,10 +31,10 @@ typedef struct _DEVICE_ENTRY
 	PDEVICE_OBJECT			DeviceObject;
 	ULONG					DiskNumber;
 	ULONG					PartitionNumber;
+	ULONG					ReadCount;
+	ULONG					WriteCount;
 	struct _DEVICE_ENTRY *  Next;
 } DEVICE_ENTRY, *PDEVICE_ENTRY;
-
-#define FILE_DEVICE_DMON			   0x00008554
 
 #ifdef ExAllocatePool
 #undef ExAllocatePool

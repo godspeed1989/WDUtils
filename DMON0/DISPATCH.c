@@ -150,13 +150,15 @@ DMReadWrite(
 	{
 		if (IrpStack->MajorFunction == IRP_MJ_READ)
 		{
-			SectorNum		= IrpStack->Parameters.Read.Length / 512;
-			ByteOffset		= IrpStack->Parameters.Read.ByteOffset.QuadPart;
+			SectorNum  = IrpStack->Parameters.Read.Length / 512;
+			ByteOffset = IrpStack->Parameters.Read.ByteOffset.QuadPart;
+			DevEntry->ReadCount++;
 		}
 		else
 		{
-			SectorNum		= IrpStack->Parameters.Write.Length / 512;
-			ByteOffset		= IrpStack->Parameters.Write.ByteOffset.QuadPart;
+			SectorNum  = IrpStack->Parameters.Write.Length / 512;
+			ByteOffset = IrpStack->Parameters.Write.ByteOffset.QuadPart;
+			DevEntry->WriteCount++;
 		}
 		SectorOffset = ByteOffset / 512;
 

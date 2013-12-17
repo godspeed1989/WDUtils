@@ -78,7 +78,7 @@ DriverEntry(
 		DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS]	= (PDRIVER_DISPATCH)DMShutDownFlushBuffer;
 		DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]	=
 		DriverObject->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL] = (PDRIVER_DISPATCH)DMDeviceControl;
-		//DriverObject->DriverUnload = DriverUnload;
+		DriverObject->DriverUnload = DriverUnload;
 
 		KeInitializeSpinLock(&HashLock);
 		ExInitializeNPagedLookasideList(&ContextLookaside, NULL, NULL, 0,
@@ -86,7 +86,7 @@ DriverEntry(
 		// Hook Device(s)
 		HookDispatch(DriverObject, 0);
 
-		g_bStartMon = TRUE;
+		//g_bStartMon = TRUE;
 	}
 
 	return status;
@@ -222,6 +222,8 @@ NewDev:
 		NewDevEntry->DeviceObject	= DeviceObject;
 		NewDevEntry->DiskNumber		= DiskIndex;
 		NewDevEntry->PartitionNumber= PartitionIndex;
+		NewDevEntry->ReadCount		= 0;
+		NewDevEntry->WriteCount		= 0;
 
 		DrvEntry = g_pDrvObjList;
 		if ( g_pDrvObjList )
