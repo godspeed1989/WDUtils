@@ -52,6 +52,7 @@ DriverUnload(PDRIVER_OBJECT driver)
 	{
 		prevDevEntry = DevEntry;
 		DevEntry = DevEntry->Next;
+		DestroyCachePool(&prevDevEntry->CachePool);
 		ExFreePool(prevDevEntry);
 	}
 	KfReleaseSpinLock(&HashLock, OldIrql);
@@ -243,6 +244,7 @@ NewDev:
 		NewDevEntry->SectorSize		= DeviceObject->SectorSize ? DeviceObject->SectorSize : 512;
 		NewDevEntry->ReadCount		= 0;
 		NewDevEntry->WriteCount		= 0;
+		InitCachePool(&NewDevEntry->CachePool);
 
 		DrvEntry = g_pDrvObjList;
 		if ( g_pDrvObjList )
