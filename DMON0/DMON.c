@@ -47,6 +47,7 @@ DriverUnload(PDRIVER_OBJECT driver)
 	// Wait for All Dispatch(es) Finished
 	while (g_uDispatchCount != 0);
 
+	OldIrql = KfAcquireSpinLock(&HashLock);
 	DevEntry = g_pDevObjList;
 	while ( DevEntry )
 	{
