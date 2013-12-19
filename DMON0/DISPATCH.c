@@ -4,6 +4,9 @@
 //                     D I S P A T C H S
 //----------------------------------------------------------------------
 
+#define ENTER_DISPATCH    InterlockedIncrement(&g_uDispatchCount)
+#define LEAVE_DISPATCH    InterlockedDecrement(&g_uDispatchCount)
+
 NTSTATUS
 MyCompletionRoutine(
 	PDEVICE_OBJECT	DeviceObject,
@@ -50,7 +53,7 @@ MyCompletionRoutine(
 	return status;
 }
 
-NTSTATUS
+static NTSTATUS
 DefaultDispatch(
 	PDEVICE_OBJECT	DeviceObject,
 	PIRP			Irp
@@ -107,6 +110,7 @@ DMCreateClose(
 	PIO_STACK_LOCATION		IrpStack;
 	PDEVICE_ENTRY			DevEntry;
 
+	ENTER_DISPATCH;
 	IrpStack = IoGetCurrentIrpStackLocation(Irp);
 
 	if ( DeviceObject == g_pDeviceObject )
@@ -127,6 +131,7 @@ DMCreateClose(
 		status = DefaultDispatch(DeviceObject, Irp);
 	}
 
+	LEAVE_DISPATCH;
 	return status;
 }
 
@@ -143,6 +148,7 @@ DMReadWrite(
 	ULONGLONG			SectorOffset;
 	PIO_STACK_LOCATION	IrpStack;
 
+	ENTER_DISPATCH;
 	IrpStack = IoGetCurrentIrpStackLocation(Irp);
 
 	DevEntry = LookupEntryByDevObj(DeviceObject);
@@ -152,20 +158,22 @@ DMReadWrite(
 		{
 			SectorNum  = IrpStack->Parameters.Read.Length / 512;
 			ByteOffset = IrpStack->Parameters.Read.ByteOffset.QuadPart;
-			DevEntry->ReadCount++;
+			InterlockedIncrement(&DevEntry->ReadCount);
 		}
 		else
 		{
 			SectorNum  = IrpStack->Parameters.Write.Length / 512;
 			ByteOffset = IrpStack->Parameters.Write.ByteOffset.QuadPart;
-			DevEntry->WriteCount++;
+			InterlockedIncrement(&DevEntry->WriteCount);
 		}
 		SectorOffset = ByteOffset / 512;
 
 		KdPrint(("%u-%u: off = %I64d, len = %u\n", DevEntry->DiskNumber, DevEntry->PartitionNumber, SectorOffset, SectorNum));
 	}
+	status = DefaultDispatch(DeviceObject, Irp);
 
-	return DefaultDispatch(DeviceObject, Irp);
+	LEAVE_DISPATCH;
+	return status;
 }
 
 static NTSTATUS
@@ -228,15 +236,16 @@ DMDeviceControl(
 	PIRP			Irp
 	)
 {
+	NTSTATUS			status;
 	PIO_STACK_LOCATION	IrpStack;
 	PVOID				InputBuffer;
 	ULONG				InputLength;
 	PVOID				OutputBuffer;
 	ULONG				OutputLength;
-	NTSTATUS			status;
 	PDEVICE_ENTRY		DevEntry;
 	ULONG				IoControlCode;
 
+	ENTER_DISPATCH;
 	IrpStack = IoGetCurrentIrpStackLocation(Irp);
 	IoControlCode = IrpStack->Parameters.DeviceIoControl.IoControlCode;
 
@@ -275,6 +284,7 @@ DMDeviceControl(
 		}
 	}
 
+	LEAVE_DISPATCH;
 	return status;
 }
 
@@ -284,16 +294,20 @@ DMShutDownFlushBuffer(
 	PIRP			Irp
 	)
 {
+	NTSTATUS				status;
 	PIO_STACK_LOCATION		IrpStack;
 	PDEVICE_ENTRY			DevEntry;
 
+	ENTER_DISPATCH;
 	IrpStack = IoGetCurrentIrpStackLocation(Irp);
 
 	DevEntry = LookupEntryByDevObj(DeviceObject);
-	if ( DevEntry && g_bStartMon)
+	if (DevEntry && g_bStartMon)
 	{
 		KdPrint(("%u-%u: %s\n", DevEntry->DiskNumber, DevEntry->PartitionNumber, IrpStack->MajorFunction == IRP_MJ_SHUTDOWN ? "IRP_MJ_SHUTDOWN" : "IRP_MJ_FLUSH_BUFFERS"));
 	}
+	status = DefaultDispatch(DeviceObject, Irp);
 
-	return DefaultDispatch(DeviceObject, Irp);
+	LEAVE_DISPATCH;
+	return status;
 }

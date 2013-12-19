@@ -75,3 +75,4 @@ extern	PDEVICE_OBJECT			g_pDeviceObject;
 
 extern	KSPIN_LOCK				HashLock;
 extern	NPAGED_LOOKASIDE_LIST	ContextLookaside;
+extern	ULONG					g_uDispatchCount;

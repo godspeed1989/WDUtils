@@ -35,6 +35,7 @@ void CloseDMon()
 
 int main(int argc, char *argv[])
 {
+	DWORD dwOutBytes;
 	if (argc > 1 && !OpenDMon())
 	{
 		if (strcmp("start", argv[1]) == 0)
@@ -47,7 +48,7 @@ int main(int argc, char *argv[])
 				0, 
 				NULL, 
 				0,
-				NULL,
+				&dwOutBytes,
 				NULL
 			);
 		}
@@ -61,7 +62,7 @@ int main(int argc, char *argv[])
 				0, 
 				NULL, 
 				0,
-				NULL,
+				&dwOutBytes,
 				NULL
 			);
 		}

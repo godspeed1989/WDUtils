@@ -11,6 +11,7 @@ PDEVICE_OBJECT			g_pDeviceObject;
 
 KSPIN_LOCK				HashLock;
 NPAGED_LOOKASIDE_LIST	ContextLookaside;
+ULONG					g_uDispatchCount;
 
 //----------------------------------------------------------------------
 //                         R O U T I N E S
@@ -21,7 +22,9 @@ DriverUnload(PDRIVER_OBJECT driver)
 	KIRQL			OldIrql;
 	PDRIVER_ENTRY	DrvEntry;
 	UNICODE_STRING	SymbolicLinkName;
-	DbgPrint("DMon: unloading ...\n");
+	DbgPrint("DMon: unloading %u ...\n", g_uDispatchCount);
+
+	g_bStartMon = FALSE;
 
 	RtlInitUnicodeString(&SymbolicLinkName, L"\\DosDevices\\Dmon");
 	IoDeleteSymbolicLink(&SymbolicLinkName);
@@ -37,6 +40,7 @@ DriverUnload(PDRIVER_OBJECT driver)
 		DrvEntry = DrvEntry->Next;
 	}
 	KfReleaseSpinLock(&HashLock, OldIrql);
+	while (g_uDispatchCount != 0);
 
 	IoDeleteDevice(g_pDeviceObject);
 	ExDeleteNPagedLookasideList(&ContextLookaside);
@@ -57,7 +61,8 @@ DriverEntry(
 	g_pDriverObject = DriverObject;
 
 	RtlInitUnicodeString(&DeviceName, L"\\Device\\Dmon");
-	status = IoCreateDevice(DriverObject, 0, &DeviceName,
+	status = IoCreateDevice(DriverObject, 0,
+							&DeviceName,
 							FILE_DEVICE_UNKNOWN,
 							0, // characteristic
 							TRUE, &g_pDeviceObject);
@@ -80,13 +85,12 @@ DriverEntry(
 		DriverObject->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL] = (PDRIVER_DISPATCH)DMDeviceControl;
 		DriverObject->DriverUnload = DriverUnload;
 
+		g_uDispatchCount = 0;
 		KeInitializeSpinLock(&HashLock);
 		ExInitializeNPagedLookasideList(&ContextLookaside, NULL, NULL, 0,
 										sizeof( MYCONTEXT ), 'nmkD', 0);
 		// Hook Device(s)
 		HookDispatch(DriverObject, 0);
-
-		//g_bStartMon = TRUE;
 	}
 
 	return status;
