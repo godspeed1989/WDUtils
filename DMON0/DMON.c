@@ -130,8 +130,8 @@ HookDispatch(
 			continue;
 		}
 		// Add disk [i] partition [0] to hook entry
-		KdPrint(("Add [%s] to Hook Entry\n", SourceString));
-		AddDeviceToHookEntry(FileObject->DeviceObject, i, 0);
+		//KdPrint(("Add [%s] to Hook Entry\n", SourceString));
+		//AddDeviceToHookEntry(FileObject->DeviceObject, i, 0);
 
 		LayoutInfo = (PDRIVE_LAYOUT_INFORMATION)ExAllocatePool(NonPagedPool, 0x2000);
 		if ( LayoutInfo )
@@ -226,6 +226,7 @@ NewDev:
 		NewDevEntry->DeviceObject	= DeviceObject;
 		NewDevEntry->DiskNumber		= DiskIndex;
 		NewDevEntry->PartitionNumber= PartitionIndex;
+		NewDevEntry->SectorSize		= DeviceObject->SectorSize ? DeviceObject->SectorSize : 512;
 		NewDevEntry->ReadCount		= 0;
 		NewDevEntry->WriteCount		= 0;
 

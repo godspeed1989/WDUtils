@@ -49,7 +49,6 @@ MyCompletionRoutine(
 			return CompletionRoutine(DeviceObject, Irp, Context);
 		}
 	}
-
 	return status;
 }
 
@@ -144,7 +143,6 @@ DMReadWrite(
 	NTSTATUS			status;
 	PDEVICE_ENTRY		DevEntry;
 	ULONG				SectorNum;
-	ULONGLONG			ByteOffset;
 	ULONGLONG			SectorOffset;
 	PIO_STACK_LOCATION	IrpStack;
 
@@ -156,17 +154,16 @@ DMReadWrite(
 	{
 		if (IrpStack->MajorFunction == IRP_MJ_READ)
 		{
-			SectorNum  = IrpStack->Parameters.Read.Length / 512;
-			ByteOffset = IrpStack->Parameters.Read.ByteOffset.QuadPart;
+			SectorOffset = IrpStack->Parameters.Read.ByteOffset.QuadPart / DevEntry->SectorSize;
+			SectorNum = IrpStack->Parameters.Read.Length / DevEntry->SectorSize;
 			InterlockedIncrement(&DevEntry->ReadCount);
 		}
 		else
 		{
-			SectorNum  = IrpStack->Parameters.Write.Length / 512;
-			ByteOffset = IrpStack->Parameters.Write.ByteOffset.QuadPart;
+			SectorOffset = IrpStack->Parameters.Write.ByteOffset.QuadPart / DevEntry->SectorSize;
+			SectorNum = IrpStack->Parameters.Write.Length / DevEntry->SectorSize;
 			InterlockedIncrement(&DevEntry->WriteCount);
 		}
-		SectorOffset = ByteOffset / 512;
 
 		KdPrint(("%u-%u: off = %I64d, len = %u\n", DevEntry->DiskNumber, DevEntry->PartitionNumber, SectorOffset, SectorNum));
 	}

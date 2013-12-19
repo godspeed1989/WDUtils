@@ -33,6 +33,7 @@ typedef struct _DEVICE_ENTRY
 	ULONG					PartitionNumber;
 	ULONG					ReadCount;
 	ULONG					WriteCount;
+	ULONG					SectorSize;
 	struct _DEVICE_ENTRY *  Next;
 } DEVICE_ENTRY, *PDEVICE_ENTRY;
 
