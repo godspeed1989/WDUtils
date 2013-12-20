@@ -1,14 +1,101 @@
 #include "Utils.h"
 #include <Ntdddisk.h>
 
-NTSTATUS DiskFilter_QueryVolumeCompletion (PDEVICE_OBJECT DeviceObject,
-										   PIRP Irp,
-										   PVOID Context)
+IO_COMPLETION_ROUTINE QueryVolumeCompletion;
+NTSTATUS QueryVolumeCompletion (PDEVICE_OBJECT DeviceObject,
+								PIRP Irp,
+								PVOID Context)
 {
+	PMDL mdl, nextMdl;
 	UNREFERENCED_PARAMETER(DeviceObject);
-	UNREFERENCED_PARAMETER(Irp);
+
 	KeSetEvent((PKEVENT)Context, (KPRIORITY)0, FALSE);
+	if(Irp->AssociatedIrp.SystemBuffer && (Irp->Flags & IRP_DEALLOCATE_BUFFER) ) {
+            ExFreePool(Irp->AssociatedIrp.SystemBuffer);
+    }
+	else if (Irp->MdlAddress != NULL) {
+        for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
+            nextMdl = mdl->Next;
+            MmUnlockPages( mdl ); IoFreeMdl( mdl );
+        }
+        Irp->MdlAddress = NULL;
+    }
+	IoFreeIrp(Irp);
+
 	return STATUS_MORE_PROCESSING_REQUIRED;
+}
+
+NTSTATUS IoDoRequestAsync (
+		ULONG			MajorFunction,
+		PDEVICE_OBJECT  DeviceObject,
+		PVOID 			Buffer,
+		ULONG			Length,
+		PLARGE_INTEGER	StartingOffset
+	)
+{
+	PIRP   			Irp	= NULL;
+	IO_STATUS_BLOCK	iosb;
+	KEVENT			Event;
+
+	KeInitializeEvent(&Event, NotificationEvent, FALSE);
+	Irp = IoBuildAsynchronousFsdRequest (
+		MajorFunction,
+		DeviceObject,
+		Buffer,
+		Length,
+		StartingOffset,
+		&iosb
+	);
+	if (NULL == Irp)
+	{
+		DbgPrint("Build IRP failed!\n");
+		return STATUS_UNSUCCESSFUL;
+	}
+	IoSetCompletionRoutine(Irp, QueryVolumeCompletion, &Event, TRUE, TRUE, TRUE);
+
+	IoCallDriver(DeviceObject, Irp);
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS IoDoRequestSync (
+		ULONG			MajorFunction,
+		PDEVICE_OBJECT  DeviceObject,
+		PVOID 			Buffer,
+		ULONG			Length,
+		PLARGE_INTEGER	StartingOffset
+	)
+{
+	NTSTATUS		Status = STATUS_SUCCESS;
+	PIRP   			Irp	= NULL;
+	IO_STATUS_BLOCK	iosb;
+	KEVENT			Event;
+
+	KeInitializeEvent(&Event, NotificationEvent, FALSE);
+	Irp = IoBuildSynchronousFsdRequest (
+		MajorFunction,
+		DeviceObject,
+		Buffer,
+		Length,
+		StartingOffset,
+		&Event,
+		&iosb
+	);
+	if (NULL == Irp)
+	{
+		DbgPrint("Build IRP failed!\n");
+		return STATUS_UNSUCCESSFUL;
+	}
+
+	if (IoCallDriver(DeviceObject, Irp) == STATUS_PENDING)
+	{
+		KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+	}
+	if (!NT_SUCCESS(Irp->IoStatus.Status))
+	{
+		DbgPrint("Forward IRP failed!\n");
+		Status = STATUS_UNSUCCESSFUL;
+	}
+	return Status;
 }
 
 NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
@@ -68,32 +155,17 @@ NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 	}
 	DevExt->TotalSize = PartitionInfo.PartitionLength;
 
-	// Build IRP to get DBR to get SectorSize
-	KeInitializeEvent(&Event, NotificationEvent, FALSE);
-	Irp = IoBuildAsynchronousFsdRequest(
+	Status = IoDoRequestSync (
 		IRP_MJ_READ,
 		DevExt->PhysicalDeviceObject,
 		DBR,
 		DBR_LENGTH,
 		&readOffset,
-		&ios
-	);
-	if (NULL == Irp)
+		TRUE);
+	if (!NT_SUCCESS(Status))
 	{
-		KdPrint(("Build IRP failed!\n"));
-		Status = STATUS_UNSUCCESSFUL;
+		DbgPrint("Forward IRP failed!\n");
 		goto ERROUT;
-	}
-	IoSetCompletionRoutine(Irp, DiskFilter_QueryVolumeCompletion, &Event, TRUE, TRUE, TRUE);
-	if (IoCallDriver(DevExt->PhysicalDeviceObject, Irp) == STATUS_PENDING)
-	{
-		KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-		if (!NT_SUCCESS(Irp->IoStatus.Status))
-		{
-			KdPrint(("Forward IRP failed!\n"));
-			Status = STATUS_UNSUCCESSFUL;
-			goto ERROUT;
-		}
 	}
 
 	// Distinguish the file system.
@@ -126,13 +198,5 @@ NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 				DevExt->SectorSize, DevExt->ClusterSize, DevExt->TotalSize));
 
 ERROUT:
-	if ((DevExt->LowerDeviceObject->Flags & DO_DIRECT_IO) &&
-		(Irp->MdlAddress != NULL))
-	{
-		MmUnlockPages(Irp->MdlAddress);
-	}
-
-	IoFreeMdl(Irp->MdlAddress);
-	IoFreeIrp(Irp);
 	return Status;
 }

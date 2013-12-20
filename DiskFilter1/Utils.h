@@ -13,8 +13,24 @@ IO_COMPLETION_ROUTINE DiskFilter_QueryVolumeCompletion;
 }
 #endif
 
+NTSTATUS IoDoRequestSync (
+		ULONG			MajorFunction,
+		PDEVICE_OBJECT  DeviceObject,
+		PVOID 			Buffer,
+		ULONG			Length,
+		PLARGE_INTEGER	StartingOffset
+	);
+
+NTSTATUS IoDoRequestAsync (
+		ULONG			MajorFunction,
+		PDEVICE_OBJECT  DeviceObject,
+		PVOID 			Buffer,
+		ULONG			Length,
+		PLARGE_INTEGER	StartingOffset
+	);
+
 NTSTATUS
-	DiskFilter_QueryVolumeInfo(
+	DiskFilter_QueryVolumeInfo (
 		PDEVICE_OBJECT DeviceObject
 	);
 
