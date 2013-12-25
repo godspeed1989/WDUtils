@@ -278,7 +278,7 @@ NewDrv:
 
 				RtlMoveMemory ( NewDrvEntry->DriverDispatch,
 								DeviceObject->DriverObject->MajorFunction,
-								IRP_MJ_MAXIMUM_FUNCTION * sizeof(void*) );
+								(IRP_MJ_MAXIMUM_FUNCTION+1) * sizeof(PVOID) );
 				// Replace Dispatch Functions
 				for(i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
 				{
