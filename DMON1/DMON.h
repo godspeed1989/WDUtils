@@ -22,7 +22,7 @@ typedef struct _DRIVER_ENTRY
 	PDRIVER_OBJECT			DriverObject;
 	// Original Dispatch Functions
 	PDRIVER_DISPATCH		DriverDispatch[IRP_MJ_MAXIMUM_FUNCTION + 1];
-	struct _DRIVER_ENTRY *  Next;
+	struct _DRIVER_ENTRY*	Next;
 } DRIVER_ENTRY, *PDRIVER_ENTRY;
 
 typedef struct _DEVICE_ENTRY
@@ -54,18 +54,20 @@ DRIVER_DISPATCH			DMDeviceControl;
 DRIVER_DISPATCH			DMShutDownFlushBuffer;
 IO_COMPLETION_ROUTINE	MyCompletionRoutine;
 
-PDEVICE_ENTRY	LookupEntryByDevObj(PDEVICE_OBJECT DeviceObject);
-PDRIVER_ENTRY	LookupEntryByDrvObj(PDRIVER_OBJECT DriverObject);
+PDEVICE_ENTRY	LookupEntryByDevObj (PDEVICE_OBJECT DeviceObject);
+PDRIVER_ENTRY	LookupEntryByDrvObj (PDRIVER_OBJECT DriverObject);
 
-NTSTATUS		HookDispatch(PDRIVER_OBJECT DriverObject, ULONG DiskIndex);
-VOID			AddDeviceToHookEntry(PDEVICE_OBJECT DeviceObject, ULONG DiskIndex, ULONG PartitionIndex);
+NTSTATUS		GetDiskDeviceObjectPointer (ULONG DiskIndex, ULONG PartitionIndex,
+											PFILE_OBJECT *FileObject, PDEVICE_OBJECT *DeviceObject);
+NTSTATUS		HookDiskPartition (PDRIVER_OBJECT DriverObject, ULONG DiskIndex);
+VOID			AddDeviceToHookEntry (PDEVICE_OBJECT DeviceObject, ULONG DiskIndex, ULONG PartitionIndex);
 
-NTSTATUS		DMReadWrite(PDEVICE_OBJECT DeviceObject, PIRP Irp);
-NTSTATUS		DMCreateClose(PDEVICE_OBJECT DeviceObject, PIRP Irp);
-NTSTATUS		DMDeviceControl(PDEVICE_OBJECT DeviceObject, PIRP Irp);
-NTSTATUS		DefaultDispatch(PDEVICE_OBJECT DeviceObject, PIRP Irp);
-NTSTATUS		DMShutDownFlushBuffer(PDEVICE_OBJECT DeviceObject, PIRP Irp);
-NTSTATUS		MyCompletionRoutine(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context);
+NTSTATUS		DMReadWrite (PDEVICE_OBJECT DeviceObject, PIRP Irp);
+NTSTATUS		DMCreateClose (PDEVICE_OBJECT DeviceObject, PIRP Irp);
+NTSTATUS		DMDeviceControl (PDEVICE_OBJECT DeviceObject, PIRP Irp);
+NTSTATUS		DefaultDispatch (PDEVICE_OBJECT DeviceObject, PIRP Irp);
+NTSTATUS		DMShutDownFlushBuffer (PDEVICE_OBJECT DeviceObject, PIRP Irp);
+NTSTATUS		MyCompletionRoutine (PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context);
 //----------------------------------------------------------------------
 //                         GLOBALS
 //----------------------------------------------------------------------

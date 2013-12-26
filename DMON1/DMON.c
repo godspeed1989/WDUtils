@@ -105,27 +105,47 @@ DriverEntry(
 		KeInitializeSpinLock(&HashLock);
 		ExInitializeNPagedLookasideList(&ContextLookaside, NULL, NULL, 0,
 										sizeof( MYCONTEXT ), 'nmkD', 0);
-		// Hook Device(s)
-		HookDispatch(DriverObject, 0);
+		// Hook Disk's partition(s)
+		HookDiskPartition(DriverObject, 0);
 	}
 
 	return status;
 }
 
 NTSTATUS
-HookDispatch(
+GetDiskDeviceObjectPointer(
+	ULONG			DiskIndex,
+	ULONG			PartitionIndex,
+	PFILE_OBJECT	*FileObject,
+	PDEVICE_OBJECT	*DeviceObject
+	)
+{
+	NTSTATUS					status;
+	CHAR						SourceString[64] = "";
+	STRING						astr;
+	UNICODE_STRING				ustr;
+
+	RtlStringCbPrintfA(SourceString, 64, "\\Device\\Harddisk%d\\Partition%d", DiskIndex, PartitionIndex);
+	RtlInitAnsiString(&astr, SourceString);
+	RtlAnsiStringToUnicodeString(&ustr, &astr, TRUE);
+
+	status = IoGetDeviceObjectPointer(&ustr, FILE_READ_ATTRIBUTES, FileObject, DeviceObject);
+
+	RtlFreeUnicodeString(&ustr);
+	return status;
+}
+
+NTSTATUS
+HookDiskPartition(
 	PDRIVER_OBJECT	DriverObject,
 	ULONG			DiskIndex
 	)
 {
-	PCONFIGURATION_INFORMATION	ConfigInfo;
 	NTSTATUS					status;
 	PIRP						Irp;
-	CHAR						SourceString[64] = "";
-	STRING						astr;
-	UNICODE_STRING				ustr;
 	PFILE_OBJECT				FileObject, FileObject1;
 	PDEVICE_OBJECT				DeviceObject, DeviceObject1;
+	PCONFIGURATION_INFORMATION	ConfigInfo;
 	PDRIVE_LAYOUT_INFORMATION	LayoutInfo;
 	KEVENT						Event;
 	IO_STATUS_BLOCK				iosb;
@@ -135,19 +155,15 @@ HookDispatch(
 
 	for(i = DiskIndex; i < ConfigInfo->DiskCount; i++)
 	{
-		RtlStringCbPrintfA(SourceString, 64, "\\Device\\Harddisk%d\\Partition0", i);
-		RtlInitAnsiString(&astr, SourceString);
-		RtlAnsiStringToUnicodeString(&ustr, &astr, TRUE);
-	
-		status = IoGetDeviceObjectPointer(&ustr, FILE_READ_ATTRIBUTES, &FileObject, &DeviceObject);
-		RtlFreeUnicodeString(&ustr);
+		status = GetDiskDeviceObjectPointer(i, 0, &FileObject, &DeviceObject);
 		if (!NT_SUCCESS(status))
 		{
+			DbgPrint("Error in hook disk(%d)-part(%d)\n", i, 0);
 			continue;
 		}
 		// Add disk [i] partition [0] to hook entry
-		//KdPrint(("Add [%s] to Hook Entry\n", SourceString));
-		//AddDeviceToHookEntry(FileObject->DeviceObject, i, 0);
+		//AddDeviceToHookEntry(DeviceObject, i, 0);
+		ObfDereferenceObject(FileObject);
 
 		LayoutInfo = (PDRIVE_LAYOUT_INFORMATION)ExAllocatePool(NonPagedPool, 0x2000);
 		if ( LayoutInfo )
@@ -168,20 +184,14 @@ HookDispatch(
 				{
 					for(j = 1; j < LayoutInfo->PartitionCount; j++)
 					{
-						RtlStringCbPrintfA(SourceString, 64, "\\Device\\Harddisk%d\\Partition%d", i, j);
-						RtlInitAnsiString(&astr, SourceString);
-						RtlAnsiStringToUnicodeString(&ustr, &astr, TRUE);
-
-						status = IoGetDeviceObjectPointer(&ustr, FILE_READ_ATTRIBUTES, &FileObject1, &DeviceObject1);
-						RtlFreeUnicodeString(&ustr);
+						status = GetDiskDeviceObjectPointer(i, j, &FileObject1, &DeviceObject1);
 						if (!NT_SUCCESS(status))
 						{
+							DbgPrint("Error in hook disk(%d)-part(%d)\n", i, j);
 							continue;
 						}
 						// Add disk [i] partition [j] to hook entry
-						KdPrint(("Add [%s] to Hook Entry\n", SourceString));
-						AddDeviceToHookEntry(FileObject1->DeviceObject, i, j);
-
+						AddDeviceToHookEntry(DeviceObject1, i, j);
 						ObfDereferenceObject(FileObject1);
 					}
 				}
@@ -192,8 +202,6 @@ HookDispatch(
 			}
 			ExFreePool(LayoutInfo);
 		}
-
-		ObfDereferenceObject(FileObject);
 	}
 
 	return status;
@@ -269,7 +277,7 @@ NewDrv:
 			g_pDevObjList = NewDevEntry;
 
 			NewDrvEntry = (PDRIVER_ENTRY)ExAllocatePool(NonPagedPool, sizeof(DRIVER_ENTRY));
-			if ( NewDrvEntry )
+			if ( NewDrvEntry != NULL )
 			{
 				// Add to Head of Driver List
 				NewDrvEntry->DriverObject	= DeviceObject->DriverObject;
@@ -294,6 +302,7 @@ NewDrv:
 	}
 
 	KfReleaseSpinLock(&HashLock, OldIrql);
+	KdPrint(("Add disk(%d)part(%d) to Hook Entry\n", DiskIndex, PartitionIndex));
 }
 
 PDEVICE_ENTRY
