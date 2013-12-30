@@ -1,0 +1,19 @@
+# $Id$
+TARGETNAME=DMON
+TARGETPATH=obj
+TARGETTYPE=DRIVER
+
+# Create browse info
+#BROWSER_INFO=1
+#BROWSERFILE=<some path>
+
+# Additional defines for the C/C++ preprocessor
+C_DEFINES=$(C_DEFINES)
+
+SOURCES=DMON.c					\
+		DISPATCH.c				\
+		Cache.c					\
+		bpt_util.c				\
+		bpt_find.c				\
+		bpt_insert.c			\
+		bpt_delete.c
