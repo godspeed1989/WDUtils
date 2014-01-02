@@ -342,7 +342,7 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 						Offset,
 						Length) == TRUE)
 				{
-					KdPrint(("cache hit\n"));
+					KdPrint(("^^^^cache hit^^^^\n"));
 					Irp->IoStatus.Status = STATUS_SUCCESS;
 					Irp->IoStatus.Information = Length;
 					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
@@ -371,15 +371,19 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 			// Write Request
 			else
 			{
-				if (Offset.QuadPart + Length < DevExt->TotalSize.QuadPart)
+				Irp->IoStatus.Information = 0;  
+				Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;  
+				IoForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp);
+				if (NT_SUCCESS(Irp->IoStatus.Status)) 
 				{
 					UpdataCachePool(&DevExt->CachePool,
 									SysBuf,
 									Offset,
 									Length,
 									_WRITE_);
-					IoSkipCurrentIrpStackLocation(Irp);
-					IoCallDriver(DevExt->LowerDeviceObject, Irp);
+					Irp->IoStatus.Status = STATUS_SUCCESS;  
+					Irp->IoStatus.Information = Length;  
+					IoCompleteRequest(Irp, IO_DISK_INCREMENT); 
 					continue;
 				}
 				else
