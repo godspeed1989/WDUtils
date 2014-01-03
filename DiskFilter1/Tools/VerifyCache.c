@@ -7,7 +7,7 @@
 #pragma pack(1)
 typedef union _SECTOR
 {
-	int			i;
+	int			in;
 	UCHAR		d[SECTOR_SIZE];
 }SECTOR, *PSECTOR;
 typedef struct _VDISK
@@ -46,16 +46,17 @@ void InitVDisk (PVDISK VDisk)
 	assert(VDisk->Content);
 	assert(VDisk->Backup);
 	for (i = 0; i < MAX_SECTOR; i++)
-		VDisk->Content[i].i = rand();
+		VDisk->Content[i].in = rand();
 	memcpy(VDisk->Backup, VDisk->Content, MAX_SECTOR * sizeof(SECTOR));
 }
 
 void SimulateReadWrite (PVDISK VDisk, PCACHE_POOL CachePool)
 {
-	ULONG i, Length;
+	ULONG i, j, c, Length;
 	LARGE_INTEGER Offset;
 	PVOID Buffer, DiskPtr;
 	printf("Simulate R/W ...\n");
+	c = 0;
 	for (i = 0; i < TEST_LOOPS; i++)
 	{
 		Offset.QuadPart = rand() % MAX_SECTOR;
@@ -70,6 +71,8 @@ void SimulateReadWrite (PVDISK VDisk, PCACHE_POOL CachePool)
 			if (QueryAndCopyFromCachePool(
 					CachePool, Buffer, Offset, Length))
 			{
+				system("cls");
+				printf("cache hit %ld\n", ++c);
 				DiskPtr = (PUCHAR)(VDisk->Backup) + Offset.QuadPart;
 				// completely from cache pool
 				if (memcmp(DiskPtr, Buffer, Length) != 0)
@@ -91,8 +94,8 @@ void SimulateReadWrite (PVDISK VDisk, PCACHE_POOL CachePool)
 		else //WRITE
 		{
 			// generate write data
-			for (i = 0; i < Length/SECTOR_SIZE; i++)
-				((PSECTOR)((PUCHAR)Buffer + i*SECTOR_SIZE))->i = rand();
+			for (j = 0; j < Length/SECTOR_SIZE; j++)
+				((PSECTOR)((PUCHAR)Buffer + j*SECTOR_SIZE))->in = rand();
 			//TODO: sync disk, this should be done by cache algorithm
 			DiskPtr = (PUCHAR)(VDisk->Content) + Offset.QuadPart;
 			memcpy(DiskPtr, Buffer, Length);
