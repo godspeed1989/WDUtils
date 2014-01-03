@@ -59,7 +59,7 @@ PDRIVER_ENTRY	LookupEntryByDrvObj (PDRIVER_OBJECT DriverObject);
 
 NTSTATUS		GetDiskDeviceObjectPointer (ULONG DiskIndex, ULONG PartitionIndex,
 											PFILE_OBJECT *FileObject, PDEVICE_OBJECT *DeviceObject);
-NTSTATUS		HookDiskPartition (PDRIVER_OBJECT DriverObject, ULONG DiskIndex);
+NTSTATUS		HookDiskAllPartition (PDRIVER_OBJECT DriverObject, ULONG DiskIndex);
 VOID			AddDeviceToHookEntry (PDEVICE_OBJECT DeviceObject, ULONG DiskIndex, ULONG PartitionIndex);
 
 NTSTATUS		DMReadWrite (PDEVICE_OBJECT DeviceObject, PIRP Irp);

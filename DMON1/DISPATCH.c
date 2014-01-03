@@ -142,8 +142,9 @@ DMReadWrite(
 {
 	NTSTATUS			status;
 	PDEVICE_ENTRY		DevEntry;
-	ULONG				SectorNum;
-	ULONGLONG			SectorOffset;
+	ULONG				Length;
+	ULONGLONG			Offset;
+	PUCHAR				SysBuf;
 	PIO_STACK_LOCATION	IrpStack;
 
 	ENTER_DISPATCH;
@@ -152,24 +153,29 @@ DMReadWrite(
 	DevEntry = LookupEntryByDevObj(DeviceObject);
 	if (DevEntry && g_bStartMon)
 	{
-		if (IrpStack->MajorFunction == IRP_MJ_READ)
+		if (Irp->MdlAddress)
 		{
-			SectorOffset = IrpStack->Parameters.Read.ByteOffset.QuadPart / DevEntry->SectorSize;
-			SectorNum = IrpStack->Parameters.Read.Length / DevEntry->SectorSize;
-			InterlockedIncrement(&DevEntry->ReadCount);
-			// if matched
-			//QueryAndCopyFromCachePool
-			//UpdataCachePool( &DevEntry->CachePool
+			SysBuf = (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
 		}
 		else
 		{
-			SectorOffset = IrpStack->Parameters.Write.ByteOffset.QuadPart / DevEntry->SectorSize;
-			SectorNum = IrpStack->Parameters.Write.Length / DevEntry->SectorSize;
+			SysBuf = (PUCHAR)Irp->UserBuffer;
+		}
+		if (IrpStack->MajorFunction == IRP_MJ_READ)
+		{
+			Offset = IrpStack->Parameters.Read.ByteOffset.QuadPart;
+			Length = IrpStack->Parameters.Read.Length;
+			InterlockedIncrement(&DevEntry->ReadCount);
+		}
+		else
+		{
+			Offset = IrpStack->Parameters.Write.ByteOffset.QuadPart;
+			Length = IrpStack->Parameters.Write.Length;
 			InterlockedIncrement(&DevEntry->WriteCount);
-			//UpdataCachePool( &DevEntry->CachePool
 		}
 
-		KdPrint(("%u-%u: off = %I64d, len = %u\n", DevEntry->DiskNumber, DevEntry->PartitionNumber, SectorOffset, SectorNum));
+		KdPrint(("%u-%u: off = %I64d, len = %u\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
+					Offset / DevEntry->SectorSize, Length / DevEntry->SectorSize));
 	}
 	status = DefaultDispatch(DeviceObject, Irp);
 

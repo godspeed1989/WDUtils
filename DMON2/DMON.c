@@ -106,7 +106,7 @@ DriverEntry(
 		ExInitializeNPagedLookasideList(&ContextLookaside, NULL, NULL, 0,
 										sizeof( MYCONTEXT ), 'nmkD', 0);
 		// Hook Disk's partition(s)
-		HookDiskPartition(DriverObject, 0);
+		HookDiskAllPartition(DriverObject, 0);
 	}
 
 	return status;
@@ -136,7 +136,7 @@ GetDiskDeviceObjectPointer(
 }
 
 NTSTATUS
-HookDiskPartition(
+HookDiskAllPartition(
 	PDRIVER_OBJECT	DriverObject,
 	ULONG			DiskIndex
 	)

@@ -105,14 +105,14 @@ DriverEntry(
 		KeInitializeSpinLock(&HashLock);
 		ExInitializeNPagedLookasideList(&ContextLookaside, NULL, NULL, 0,
 										sizeof( MYCONTEXT ), 'nmkD', 0);
-		// Hook Disk's partition(s)
-		HookDiskPartition(DriverObject, 0);
+		// Hook Disk0's all partition(s)
+		HookDiskAllPartition(DriverObject, 0);
 	}
 
 	return status;
 }
 
-NTSTATUS
+static NTSTATUS
 GetDiskDeviceObjectPointer(
 	ULONG			DiskIndex,
 	ULONG			PartitionIndex,
@@ -136,7 +136,7 @@ GetDiskDeviceObjectPointer(
 }
 
 NTSTATUS
-HookDiskPartition(
+HookDiskAllPartition(
 	PDRIVER_OBJECT	DriverObject,
 	ULONG			DiskIndex
 	)

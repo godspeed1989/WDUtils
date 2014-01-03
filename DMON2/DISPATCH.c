@@ -167,16 +167,16 @@ DMReadWrite(
 		{
 			Offset = IrpStack->Parameters.Read.ByteOffset.QuadPart;
 			Length = IrpStack->Parameters.Read.Length;
-			InterlockedIncrement(&DevEntry->ReadCount, SectorOffset);
+			InterlockedIncrement(&DevEntry->ReadCount);
 			// if matched
 			if ( TRUE == QueryAndCopyFromCachePool(&DevEntry->CachePool,
 													SysBuf, Offset, Length) )
 			{
 				KdPrint(("cache hit\n"));
+				status = STATUS_SUCCESS;
 				Irp->IoStatus.Status = STATUS_SUCCESS;
 				Irp->IoStatus.Information = Length;
 				IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-				status = STATUS_SUCCESS;
 			}
 			else
 			{
@@ -207,9 +207,12 @@ DMReadWrite(
 								_WRITE_);
 			}
 		}
-
 		KdPrint(("%u-%u: off = %I64d, len = %u\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
 											Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize));
+	}
+	else
+	{
+		status = DefaultDispatch(DeviceObject, Irp);
 	}
 
 	LEAVE_DISPATCH;
