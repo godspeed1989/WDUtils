@@ -1,0 +1,11 @@
+TARGETNAME=DiskFilter
+TARGETTYPE=DRIVER
+
+SOURCES=DiskFilter.c	\
+        Dispatch.c		\
+		Utils.c			\
+		bpt_delete.c	\
+		bpt_insert.c	\
+		bpt_find.c		\
+		bpt_util.c		\
+		Cache.c
