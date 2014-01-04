@@ -117,7 +117,7 @@ node * coalesce_nodes(node * root, node * n, node * neighbor, KEY_T neighbor_ind
 {
 	KEY_T i, j, neighbor_insertion_index, n_start, n_end, new_k_prime;
 	node * tmp;
-	BOOL split;
+	BOOLEAN split;
 
 	/* Swap neighbor with node if node is on the
 	 * extreme left and neighbor is to its right.
@@ -389,7 +389,7 @@ node * delete_entry( node * root, node * n, KEY_T key, void * pointer )
 }
 
 /* Master deletion function. */
-node * Delete(node * root, KEY_T key)
+node * Delete(node * root, KEY_T key, BOOLEAN free)
 {
 	node * key_leaf;
 	record * key_record;
@@ -399,7 +399,8 @@ node * Delete(node * root, KEY_T key)
 	if (key_record != NULL && key_leaf != NULL)
 	{
 		root = delete_entry(root, key_leaf, key, key_record);
-		Free_Record(key_record);
+		if (free == TRUE)
+			Free_Record(key_record);
 	}
 	return root;
 }

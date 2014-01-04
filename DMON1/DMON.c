@@ -13,16 +13,22 @@ KSPIN_LOCK				HashLock;
 NPAGED_LOOKASIDE_LIST	ContextLookaside;
 ULONG					g_uDispatchCount;
 
+#define    DELAY_ONE_MICROSECOND    (-10)
+#define    DELAY_ONE_MILLISECOND    (DELAY_ONE_MICROSECOND*1000)
+#define    DELAY_ONE_SECOND         (DELAY_ONE_MILLISECOND*1000)
+
 //----------------------------------------------------------------------
 //                         R O U T I N E S
 //----------------------------------------------------------------------
 VOID
 DriverUnload(PDRIVER_OBJECT driver)
 {
+	ULONG			i;
 	KIRQL			OldIrql;
 	PDRIVER_ENTRY	DrvEntry, prevDrvEntry;
 	PDEVICE_ENTRY	DevEntry, prevDevEntry;
 	UNICODE_STRING	SymbolicLinkName;
+	LARGE_INTEGER	lDelay;
 	DbgPrint("DMon: unloading %u ...\n", g_uDispatchCount);
 
 	g_bStartMon = FALSE;
@@ -35,9 +41,11 @@ DriverUnload(PDRIVER_OBJECT driver)
 	while ( DrvEntry )
 	{
 		// Restore Dispatch Functions
-		RtlMoveMemory ( DrvEntry->DriverObject->MajorFunction,
-						DrvEntry->DriverDispatch,
-						IRP_MJ_MAXIMUM_FUNCTION * sizeof(void*) );
+		for(i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
+		{
+			InterlockedExchangePointer (&DrvEntry->DriverObject->MajorFunction[i],
+										DrvEntry->DriverDispatch[i]);
+		}
 		prevDrvEntry = DrvEntry;
 		DrvEntry = DrvEntry->Next;
 		ExFreePool(prevDrvEntry);
@@ -45,7 +53,11 @@ DriverUnload(PDRIVER_OBJECT driver)
 	KfReleaseSpinLock(&HashLock, OldIrql);
 
 	// Wait for All Dispatch(es) Finished
-	while (g_uDispatchCount != 0);
+	lDelay = RtlConvertLongToLargeInteger(100 * DELAY_ONE_MILLISECOND);
+	while (g_uDispatchCount != 0)
+	{
+		KeDelayExecutionThread(KernelMode, FALSE, &lDelay);
+	}
 
 	OldIrql = KfAcquireSpinLock(&HashLock);
 	DevEntry = g_pDevObjList;
@@ -294,7 +306,8 @@ NewDrv:
 				{
 					if(g_pDriverObject->MajorFunction[i] != NULL)
 					{
-						DeviceObject->DriverObject->MajorFunction[i] = g_pDriverObject->MajorFunction[i];
+						InterlockedExchangePointer (&DeviceObject->DriverObject->MajorFunction[i],
+													g_pDriverObject->MajorFunction[i]);
 					}
 				}
 			}

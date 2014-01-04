@@ -160,8 +160,8 @@ NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 		DevExt->PhysicalDeviceObject,
 		DBR,
 		DBR_LENGTH,
-		&readOffset,
-		TRUE);
+		&readOffset
+	);
 	if (!NT_SUCCESS(Status))
 	{
 		DbgPrint("Forward IRP failed!\n");

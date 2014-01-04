@@ -27,6 +27,8 @@ MyCompletionRoutine(
 
 	ExFreeToNPagedLookasideList(&ContextLookaside, MyContext);
 
+	LEAVE_DISPATCH;
+
 	status = Irp->IoStatus.Status;
 	if( NT_SUCCESS(status) )
 	{
@@ -81,7 +83,7 @@ DefaultDispatch(
 			IrpStack->Context = MyContext;
 			IrpStack->Control = SL_INVOKE_ON_SUCCESS | SL_INVOKE_ON_ERROR | SL_INVOKE_ON_CANCEL;
 		}
-
+		ENTER_DISPATCH;
 		status = (DevEntry->DrvEntry->DriverDispatch[IrpStack->MajorFunction])(DeviceObject, Irp);
 	}
 	else
@@ -109,7 +111,6 @@ DMCreateClose(
 	PIO_STACK_LOCATION		IrpStack;
 	PDEVICE_ENTRY			DevEntry;
 
-	ENTER_DISPATCH;
 	IrpStack = IoGetCurrentIrpStackLocation(Irp);
 
 	if ( DeviceObject == g_pDeviceObject )
@@ -130,7 +131,6 @@ DMCreateClose(
 		status = DefaultDispatch(DeviceObject, Irp);
 	}
 
-	LEAVE_DISPATCH;
 	return status;
 }
 
@@ -147,7 +147,6 @@ DMReadWrite(
 	PUCHAR				SysBuf;
 	PIO_STACK_LOCATION	IrpStack;
 
-	ENTER_DISPATCH;
 	IrpStack = IoGetCurrentIrpStackLocation(Irp);
 
 	DevEntry = LookupEntryByDevObj(DeviceObject);
@@ -179,7 +178,6 @@ DMReadWrite(
 	}
 	status = DefaultDispatch(DeviceObject, Irp);
 
-	LEAVE_DISPATCH;
 	return status;
 }
 
@@ -252,7 +250,6 @@ DMDeviceControl(
 	PDEVICE_ENTRY		DevEntry;
 	ULONG				IoControlCode;
 
-	ENTER_DISPATCH;
 	IrpStack = IoGetCurrentIrpStackLocation(Irp);
 	IoControlCode = IrpStack->Parameters.DeviceIoControl.IoControlCode;
 
@@ -282,7 +279,6 @@ DMDeviceControl(
 		status = DefaultDispatch(DeviceObject, Irp);
 	}
 
-	LEAVE_DISPATCH;
 	return status;
 }
 
@@ -296,7 +292,6 @@ DMShutDownFlushBuffer(
 	PIO_STACK_LOCATION		IrpStack;
 	PDEVICE_ENTRY			DevEntry;
 
-	ENTER_DISPATCH;
 	IrpStack = IoGetCurrentIrpStackLocation(Irp);
 
 	DevEntry = LookupEntryByDevObj(DeviceObject);
@@ -306,6 +301,5 @@ DMShutDownFlushBuffer(
 	}
 	status = DefaultDispatch(DeviceObject, Irp);
 
-	LEAVE_DISPATCH;
 	return status;
 }

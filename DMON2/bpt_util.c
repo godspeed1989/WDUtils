@@ -1,5 +1,13 @@
 #include "bpt.h"
 
+KEY_T CUT( KEY_T length )
+{
+	if (length % 2 == 0)
+		return length/2;
+	else
+		return length/2 + 1;
+}
+
 /* give the height of the tree, which length in number of edges */
 KEY_T height( node * root )
 {
@@ -29,7 +37,9 @@ node * Make_Node( void )
 	new_node->is_leaf = FALSE;
 	new_node->num_keys = 0;
 	new_node->parent = NULL;
+#ifdef PRINT_BPT
 	new_node->next = NULL;
+#endif
 	return new_node;
 }
 
@@ -43,23 +53,8 @@ void Free_Node( node * n )
 	}
 }
 
-record * Make_Record( VAL_T value )
-{
-	record * new_record = (record *)MALLOC(sizeof(record));
-	assert(new_record);
-	new_record->value = value;
-	return new_record;
-}
-
-void Free_Record( record * r )
-{
-	if(r)
-	{
-		FREE(r);
-	}
-}
-
 #ifdef USER_APP
+#ifdef PRINT_BPT
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -125,7 +120,7 @@ void Print_Tree_File( node * root )
 		n = dequeue();
 		fprintf(fp, "n%p[label=\"", n);
 		for (i = 0; i < n->num_keys; i++) {
-			fprintf(fp, " %lu ", n->keys[i]);
+			fprintf(fp, " %I64d ", n->keys[i]);
 		}
 		fprintf(fp, "\",shape=box];\n");
 		if (n->is_leaf == FALSE) {
@@ -142,4 +137,5 @@ void Print_Tree_File( node * root )
 	fprintf(fp, "}\n");
 	fclose(fp);
 }
+#endif
 #endif

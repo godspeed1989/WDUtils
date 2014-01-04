@@ -271,7 +271,7 @@ node * start_new_tree(KEY_T key, record * pointer)
  * however necessary to maintain the B+ tree
  * properties.
  */
-node * Insert( node * root, KEY_T key, VAL_T value )
+node * Insert( node * root, KEY_T key, record * r )
 {
 	record * pointer;
 	node * leaf;
@@ -281,7 +281,7 @@ node * Insert( node * root, KEY_T key, VAL_T value )
 		return root;
 
 	/* Create a new record for the value. */
-	pointer = Make_Record(value);
+	pointer = r;
 
 	/* Case: the tree does not exist yet. */
 	if (root == NULL) 
