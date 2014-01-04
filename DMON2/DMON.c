@@ -28,6 +28,7 @@ DriverUnload(PDRIVER_OBJECT driver)
 	PDRIVER_ENTRY	DrvEntry, prevDrvEntry;
 	PDEVICE_ENTRY	DevEntry, prevDevEntry;
 	UNICODE_STRING	SymbolicLinkName;
+	LONG			value;
 	LARGE_INTEGER	lDelay;
 	DbgPrint("DMon: unloading %u ...\n", g_uDispatchCount);
 
@@ -53,7 +54,8 @@ DriverUnload(PDRIVER_OBJECT driver)
 	KfReleaseSpinLock(&HashLock, OldIrql);
 
 	// Wait for All Dispatch(es) Finished
-	lDelay = RtlConvertLongToLargeInteger(100 * DELAY_ONE_MILLISECOND);
+	value = 100 * DELAY_ONE_MILLISECOND;
+	lDelay.QuadPart = value;
 	while (g_uDispatchCount != 0)
 	{
 		KeDelayExecutionThread(KernelMode, FALSE, &lDelay);
