@@ -163,6 +163,8 @@ static VOID FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data
 found:
 	if (pBlock != NULL)
 	{
+		DbgPrint("%p[%d] <- %p[%d]\n", pBlock->Data, 
+			*((int*)pBlock->Data), Data, *((int*)Data) );
 		CachePool->bpt_root = Delete(CachePool->bpt_root, key, FALSE);
 		pBlock->Accessed = FALSE;
 		pBlock->Modified = FALSE;

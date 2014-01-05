@@ -142,7 +142,7 @@ DMReadWrite(
 {
 	NTSTATUS			status;
 	PDEVICE_ENTRY		DevEntry;
-	PUCHAR				SysBuf;
+	PUCHAR				SysBuf, SysBuf1;
 	ULONG				Length;
 	ULONGLONG			Offset;
 	PIO_STACK_LOCATION	IrpStack;
@@ -161,11 +161,33 @@ DMReadWrite(
 		{
 			SysBuf = (PUCHAR)Irp->UserBuffer;
 		}
-		// Read or Write
-		if (IrpStack->MajorFunction == IRP_MJ_READ)
+		// Get offset and length
+		if (IRP_MJ_READ == IrpStack->MajorFunction)
 		{
 			Offset = IrpStack->Parameters.Read.ByteOffset.QuadPart;
 			Length = IrpStack->Parameters.Read.Length;
+		}
+		else if (IRP_MJ_WRITE == IrpStack->MajorFunction)
+		{
+			Offset = IrpStack->Parameters.Write.ByteOffset.QuadPart;
+			Length = IrpStack->Parameters.Write.Length;
+		}
+		else
+		{
+			Offset = 0;
+			Length = 0;
+		}
+		if (!SysBuf || !Length) // Ignore this IRP.
+		{
+			status = DefaultDispatch(DeviceObject, Irp);
+			goto ret;
+		}
+		KdPrint(("%u-%u: %d %p off=%I64d, len=%u\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
+				(IrpStack->MajorFunction == IRP_MJ_READ), SysBuf, Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize));
+
+		// Read or Write
+		if (IrpStack->MajorFunction == IRP_MJ_READ)
+		{
 			InterlockedIncrement(&DevEntry->ReadCount);
 			// if matched
 			if ( TRUE == QueryAndCopyFromCachePool(&DevEntry->CachePool,
@@ -180,40 +202,36 @@ DMReadWrite(
 			else
 			{
 				status = DefaultDispatch(DeviceObject, Irp);
-				if (NT_SUCCESS(Irp->IoStatus.Status))
+				if (NT_SUCCESS(Irp->IoStatus.Status) && Irp->IoStatus.Information != 0)
 				{
 					UpdataCachePool(&DevEntry->CachePool,
 									SysBuf,
 									Offset,
-									Length,
+									Irp->IoStatus.Information,
 									_READ_);
 				}
 			}
 		}
 		else
 		{
-			Offset = IrpStack->Parameters.Write.ByteOffset.QuadPart;
-			Length = IrpStack->Parameters.Write.Length;
 			InterlockedIncrement(&DevEntry->WriteCount);
-			// write through
+			// Write through
 			status = DefaultDispatch(DeviceObject, Irp);
-			if (NT_SUCCESS(Irp->IoStatus.Status))
+			if (NT_SUCCESS(Irp->IoStatus.Status) && Irp->IoStatus.Information != 0)
 			{
 				UpdataCachePool(&DevEntry->CachePool,
 								SysBuf,
 								Offset,
-								Length,
+								Irp->IoStatus.Information,
 								_WRITE_);
 			}
 		}
-		KdPrint(("%u-%u: off = %I64d, len = %u\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
-											Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize));
 	}
 	else
 	{
 		status = DefaultDispatch(DeviceObject, Irp);
 	}
-
+ret:
 	return status;
 }
 

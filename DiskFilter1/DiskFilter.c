@@ -381,9 +381,9 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 									Offset,
 									Length,
 									_WRITE_);
-					Irp->IoStatus.Status = STATUS_SUCCESS;  
-					Irp->IoStatus.Information = Length;  
-					IoCompleteRequest(Irp, IO_DISK_INCREMENT); 
+					Irp->IoStatus.Status = STATUS_SUCCESS;
+					Irp->IoStatus.Information = Length;
+					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
 					continue;
 				}
 				else
