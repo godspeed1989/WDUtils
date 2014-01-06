@@ -360,10 +360,10 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 						UpdataCachePool(&DevExt->CachePool,
 										SysBuf,
 										Offset.QuadPart,
-										Length,
+										Irp->IoStatus.Information,
 										_READ_);
-						Irp->IoStatus.Status = STATUS_SUCCESS;
-						Irp->IoStatus.Information = Length;
+						//Irp->IoStatus.Status = STATUS_SUCCESS;
+						//Irp->IoStatus.Information = Length;
 					}
 					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
 					continue;
@@ -380,10 +380,10 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 					UpdataCachePool(&DevExt->CachePool,
 									SysBuf,
 									Offset.QuadPart,
-									Length,
+									Irp->IoStatus.Information,
 									_WRITE_);
-					Irp->IoStatus.Status = STATUS_SUCCESS;  
-					Irp->IoStatus.Information = Length;  
+					//Irp->IoStatus.Status = STATUS_SUCCESS;  
+					//Irp->IoStatus.Information = Length;  
 					IoCompleteRequest(Irp, IO_DISK_INCREMENT); 
 					continue;
 				}

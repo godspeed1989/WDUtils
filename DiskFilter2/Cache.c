@@ -185,9 +185,12 @@ VOID UpdataCachePool(
 {
 	ULONG i;
 	PCACHE_BLOCK pBlock;
+	BOOLEAN broken;
 
 	ASSERT(Offset % SECTOR_SIZE == 0);
-	ASSERT(Length % SECTOR_SIZE == 0);
+	broken = FALSE;
+	if (Length % SECTOR_SIZE != 0)
+		broken = TRUE;
 
 	Offset /= SECTOR_SIZE;
 	Length /= SECTOR_SIZE;
@@ -241,5 +244,7 @@ VOID UpdataCachePool(
 				continue;
 			}
 		}
+		if (broken == TRUE)
+			CachePool->bpt_root = Delete(CachePool->bpt_root, Offset+i, TRUE);
 	}
 }

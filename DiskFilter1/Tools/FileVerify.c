@@ -6,7 +6,7 @@
 #include "md5.h"
 
 typedef unsigned char u8;
-#define MAXFILE		(200)
+#define MAXFILE		(600)
 #define MAXSIZE		(1<<20)
 #define PATHSTR		":\\Verify\\"
 

@@ -79,6 +79,7 @@ static BOOLEAN AddOneBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 			SECTOR_SIZE
 		);
 		CachePool->Used++;
+		DbgPrint("used %u\n", CachePool->Used);
 		// Insert into bpt
 		CachePool->bpt_root = Insert(CachePool->bpt_root, Index, pBlock);
 		return TRUE;
@@ -130,6 +131,7 @@ BOOLEAN QueryAndCopyFromCachePool (
 	}
 	Ret = TRUE;
 l_error:
+	DbgPrint("%u of %u\n", i, Length);
 	if (ppInternalBlocks != NULL)
 		ExFreePoolWithTag(ppInternalBlocks, CACHE_POOL_TAG);
 	return Ret;
@@ -163,8 +165,6 @@ static VOID FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data
 found:
 	if (pBlock != NULL)
 	{
-		DbgPrint("%p[%d] <- %p[%d]\n", pBlock->Data, 
-			*((int*)pBlock->Data), Data, *((int*)Data) );
 		CachePool->bpt_root = Delete(CachePool->bpt_root, key, FALSE);
 		pBlock->Accessed = FALSE;
 		pBlock->Modified = FALSE;
@@ -187,9 +187,12 @@ VOID UpdataCachePool(
 {
 	ULONG i;
 	PCACHE_BLOCK pBlock;
+	BOOLEAN broken;
 
 	ASSERT(Offset % SECTOR_SIZE == 0);
-	ASSERT(Length % SECTOR_SIZE == 0);
+	broken = FALSE;
+	if (Length % SECTOR_SIZE != 0)
+		broken = TRUE;
 
 	Offset /= SECTOR_SIZE;
 	Length /= SECTOR_SIZE;
@@ -217,7 +220,7 @@ VOID UpdataCachePool(
 			i++;
 		}
 	}
-	else
+	else /* Write */
 	{
 		for (i = 0; i < Length; i++)
 		{
@@ -243,5 +246,7 @@ VOID UpdataCachePool(
 				continue;
 			}
 		}
+		if (broken == TRUE)
+			CachePool->bpt_root = Delete(CachePool->bpt_root, Offset+i, TRUE);
 	}
 }

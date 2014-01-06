@@ -182,12 +182,12 @@ DMReadWrite(
 			status = DefaultDispatch(DeviceObject, Irp);
 			goto ret;
 		}
-		KdPrint(("%u-%u: %d %p off=%I64d, len=%u\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
-				(IrpStack->MajorFunction == IRP_MJ_READ), SysBuf, Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize));
 
 		// Read or Write
 		if (IrpStack->MajorFunction == IRP_MJ_READ)
 		{
+			KdPrint(("%u-%u: R %p off=%I64d, len=%u\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
+						SysBuf, Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize));
 			InterlockedIncrement(&DevEntry->ReadCount);
 			// if matched
 			if ( TRUE == QueryAndCopyFromCachePool(&DevEntry->CachePool,
@@ -214,6 +214,8 @@ DMReadWrite(
 		}
 		else
 		{
+			//KdPrint(("%u-%u: W %p off=%I64d, len=%u\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
+			//			SysBuf, Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize));
 			InterlockedIncrement(&DevEntry->WriteCount);
 			// Write through
 			status = DefaultDispatch(DeviceObject, Irp);

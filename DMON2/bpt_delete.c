@@ -421,6 +421,7 @@ void destroy_tree_nodes(node * root)
 
 node * Destroy_Tree(node * root)
 {
-	destroy_tree_nodes(root);
+	if (root)
+		destroy_tree_nodes(root);
 	return NULL;
 }
