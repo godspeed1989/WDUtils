@@ -222,6 +222,9 @@ VOID UpdataCachePool(
 	{
 		for (i = 0; i < Length; i++)
 		{
+		#if 1
+			CachePool->bpt_root = Delete(CachePool->bpt_root, Offset+i, TRUE);
+		#else
 			if(QueryPoolByIndex(CachePool, Offset+i, &pBlock) == TRUE)
 			{
 				// Update
@@ -243,6 +246,7 @@ VOID UpdataCachePool(
 				FindBlockToReplace(CachePool, Offset+i, Buf+i*SECTOR_SIZE);
 				continue;
 			}
+		#endif
 		}
 		if (broken == TRUE)
 			CachePool->bpt_root = Delete(CachePool->bpt_root, Offset+i, TRUE);

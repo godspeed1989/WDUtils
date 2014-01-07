@@ -186,8 +186,6 @@ DMReadWrite(
 		// Read or Write
 		if (IrpStack->MajorFunction == IRP_MJ_READ)
 		{
-			KdPrint(("%u-%u: R %p off=%I64d, len=%u\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
-						SysBuf, Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize));
 			InterlockedIncrement(&DevEntry->ReadCount);
 			// if matched
 			if ( TRUE == QueryAndCopyFromCachePool(&DevEntry->CachePool,
@@ -202,31 +200,44 @@ DMReadWrite(
 			else
 			{
 				status = DefaultDispatch(DeviceObject, Irp);
-				if (NT_SUCCESS(Irp->IoStatus.Status) && Irp->IoStatus.Information != 0)
-				{
-					UpdataCachePool(&DevEntry->CachePool,
-									SysBuf,
-									Offset,
-									Irp->IoStatus.Information,
-									_READ_);
+				__try {
+					//ERROR: if not probe, chkdsk cause crash
+					//ProbeForRead(SysBuf, Length, TYPE_ALIGNMENT(char));
+					if (NT_SUCCESS(Irp->IoStatus.Status))
+					{
+						KdPrint(("%u-%u: R %p off=%I64d, len=%u\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
+								SysBuf, Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize));
+						UpdataCachePool(&DevEntry->CachePool,
+										SysBuf,
+										Offset,
+										Length,
+										_READ_);
+					}
+				} __except( EXCEPTION_EXECUTE_HANDLER ) {
+					/* Don't Update Pool */;
+					DbgPrint("Invalid access\n");
 				}
 			}
 		}
 		else
 		{
-			//KdPrint(("%u-%u: W %p off=%I64d, len=%u\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
-			//			SysBuf, Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize));
 			InterlockedIncrement(&DevEntry->WriteCount);
+			SysBuf1 = MALLOC(Length);
+			ASSERT(SysBuf1);
+			RtlCopyMemory(SysBuf1, SysBuf, Length);
 			// Write through
 			status = DefaultDispatch(DeviceObject, Irp);
-			if (NT_SUCCESS(Irp->IoStatus.Status) && Irp->IoStatus.Information != 0)
+			if (NT_SUCCESS(Irp->IoStatus.Status))
 			{
+				KdPrint(("%u-%u: W %p off=%I64d, len=%u\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
+						SysBuf, Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize));
 				UpdataCachePool(&DevEntry->CachePool,
-								SysBuf,
+								SysBuf1,
 								Offset,
-								Irp->IoStatus.Information,
+								Length,
 								_WRITE_);
 			}
+			FREE(SysBuf1);
 		}
 	}
 	else

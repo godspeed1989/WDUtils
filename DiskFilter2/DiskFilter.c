@@ -270,7 +270,7 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 	PIRP Irp = NULL;
 	PLIST_ENTRY ReqEntry = NULL;
 	PIO_STACK_LOCATION IrpSp;
-	PUCHAR SysBuf;
+	PUCHAR SysBuf, SysBuf1;
 	LARGE_INTEGER Offset;
 	ULONG Length;
 	PDISKFILTER_DEVICE_EXTENSION DevExt = (PDISKFILTER_DEVICE_EXTENSION)Context;
@@ -360,10 +360,8 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 						UpdataCachePool(&DevExt->CachePool,
 										SysBuf,
 										Offset.QuadPart,
-										Irp->IoStatus.Information,
+										Length,
 										_READ_);
-						//Irp->IoStatus.Status = STATUS_SUCCESS;
-						//Irp->IoStatus.Information = Length;
 					}
 					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
 					continue;
@@ -372,19 +370,20 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 			// Write Request
 			else
 			{
-				Irp->IoStatus.Information = 0;  
-				Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;  
+				Irp->IoStatus.Information = 0;
+				Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+				SysBuf1 = MALLOC(Length);
+				ASSERT(SysBuf1);
+				RtlCopyMemory(SysBuf1, SysBuf, Length);
 				IoForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp);
-				if (NT_SUCCESS(Irp->IoStatus.Status)) 
+				if (NT_SUCCESS(Irp->IoStatus.Status))
 				{
 					UpdataCachePool(&DevExt->CachePool,
-									SysBuf,
+									SysBuf1,
 									Offset.QuadPart,
-									Irp->IoStatus.Information,
+									Length,
 									_WRITE_);
-					//Irp->IoStatus.Status = STATUS_SUCCESS;  
-					//Irp->IoStatus.Information = Length;  
-					IoCompleteRequest(Irp, IO_DISK_INCREMENT); 
+					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
 					continue;
 				}
 				else
@@ -394,6 +393,7 @@ VOID DiskFilter_ReadWriteThread(PVOID Context)
 					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
 					continue;
 				}
+				FREE(SysBuf1);
 			}
 		} // End of travel list.
 	}
