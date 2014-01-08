@@ -8,14 +8,6 @@
 //----------------------------------------------------------------------
 //  Typedefs and defines
 //----------------------------------------------------------------------
-typedef struct _MYCONTEXT
-{
-	PVOID			CompletionRoutine;
-	PVOID			Context;
-	UCHAR			Control;
-	ULONG			MajorFunction;
-}MYCONTEXT, *PMYCONTEXT;
-
 typedef struct _DRIVER_ENTRY
 {
 	// Original Driver Object
@@ -38,6 +30,17 @@ typedef struct _DEVICE_ENTRY
 	CACHE_POOL				CachePool;
 	struct _DEVICE_ENTRY *  Next;
 } DEVICE_ENTRY, *PDEVICE_ENTRY;
+
+typedef struct _MYCONTEXT
+{
+	PVOID			CompletionRoutine;
+	PVOID			Context;
+	UCHAR			Control;
+	ULONG			MajorFunction;
+	PDEVICE_ENTRY	DevEntry;
+	ULONG			Length;
+	ULONGLONG		Offset;
+}MYCONTEXT, *PMYCONTEXT;
 
 #ifdef ExAllocatePool
 #undef ExAllocatePool

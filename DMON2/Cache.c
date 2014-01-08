@@ -184,14 +184,21 @@ VOID UpdataCachePool(
 	BOOLEAN Type
 )
 {
-	ULONG i;
+	ULONG i, Skip;
 	PCACHE_BLOCK pBlock;
-	BOOLEAN broken;
+	BOOLEAN front_broken, end_broken;
 
-	ASSERT(Offset % SECTOR_SIZE == 0);
-	broken = FALSE;
+	front_broken = FALSE;
+	end_broken = FALSE;
+	if (Offset % SECTOR_SIZE != 0)
+	{
+		front_broken = TRUE;
+		Skip = SECTOR_SIZE - (Offset % SECTOR_SIZE);
+		Offset +=  Skip;
+		Length  = (Length > Skip) ? (Length - Skip) : 0;
+	}
 	if (Length % SECTOR_SIZE != 0)
-		broken = TRUE;
+		end_broken = TRUE;
 
 	Offset /= SECTOR_SIZE;
 	Length /= SECTOR_SIZE;
@@ -221,6 +228,8 @@ VOID UpdataCachePool(
 	}
 	else /* Write */
 	{
+		if(front_broken)
+			CachePool->bpt_root = Delete(CachePool->bpt_root, Offset-1, TRUE);
 		for (i = 0; i < Length; i++)
 		{
 		#if 1
@@ -249,7 +258,7 @@ VOID UpdataCachePool(
 			}
 		#endif
 		}
-		if (broken == TRUE)
+		if (end_broken == TRUE)
 			CachePool->bpt_root = Delete(CachePool->bpt_root, Offset+i, TRUE);
 	}
 }

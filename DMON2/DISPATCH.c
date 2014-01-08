@@ -18,17 +18,72 @@ MyCompletionRoutine(
 	UCHAR					Control;
 	PMYCONTEXT				MyContext;
 	PIO_COMPLETION_ROUTINE	CompletionRoutine;
+	PUCHAR					SysBuf;
+	PDEVICE_ENTRY			DevEntry;
+	ULONG					Length;
+	ULONGLONG				Offset;
 
 	MyContext = (PMYCONTEXT)Context;
-
 	Control = MyContext->Control;
 	Context = MyContext->Context;
 	CompletionRoutine = MyContext->CompletionRoutine;
+	DevEntry = MyContext->DevEntry;
+	Length = MyContext->Length;
+	Offset = MyContext->Offset;
 
+	if (g_bStartMon)
+	{
+		// Get system buffer address
+		if (Irp->MdlAddress != NULL)
+			SysBuf = (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+		else
+			SysBuf = (PUCHAR)Irp->UserBuffer;
+		if (SysBuf == NULL)
+			SysBuf = (PUCHAR)Irp->AssociatedIrp.SystemBuffer;
+		// Read
+		if (MyContext->MajorFunction == IRP_MJ_READ)
+		{
+			// Ignore this IRP
+			if (0 == Length)
+			{
+				goto ret;
+			}
+			if (NT_SUCCESS(Irp->IoStatus.Status))
+			{
+				KdPrint(("%u-%u: R %p %p off=%I64d, len=%u(%u)\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
+						Irp, SysBuf, Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize,
+						Irp->IoStatus.Information));
+				UpdataCachePool(&DevEntry->CachePool,
+								SysBuf,
+								Offset,
+								Length,
+								_READ_);
+			}
+		}
+		// Write
+		else if (MyContext->MajorFunction == IRP_MJ_WRITE)
+		{
+			// Ignore this IRP
+			if (0 == Length)
+			{
+				goto ret;
+			}
+			if (NT_SUCCESS(Irp->IoStatus.Status))
+			{
+				KdPrint(("%u-%u: W %p %p off=%I64d, len=%u(%u)\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
+						Irp, SysBuf, Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize,
+						Irp->IoStatus.Information));
+				UpdataCachePool(&DevEntry->CachePool,
+								SysBuf,
+								Offset,
+								Length,
+								_WRITE_);
+			}
+		}
+	}
+ret:
 	ExFreeToNPagedLookasideList(&ContextLookaside, MyContext);
-
 	LEAVE_DISPATCH;
-
 	status = Irp->IoStatus.Status;
 	if( NT_SUCCESS(status) )
 	{
@@ -78,7 +133,17 @@ DefaultDispatch(
 			MyContext->Control = IrpStack->Control;
 			MyContext->MajorFunction = IrpStack->MajorFunction;
 			MyContext->CompletionRoutine = IrpStack->CompletionRoutine;
-
+			MyContext->DevEntry = DevEntry;
+			if(IrpStack->MajorFunction == IRP_MJ_READ)
+			{
+				MyContext->Offset = IrpStack->Parameters.Read.ByteOffset.QuadPart;
+				MyContext->Length = IrpStack->Parameters.Read.Length;
+			}
+			else if (IrpStack->MajorFunction == IRP_MJ_WRITE)
+			{
+				MyContext->Offset = IrpStack->Parameters.Write.ByteOffset.QuadPart;
+				MyContext->Length = IrpStack->Parameters.Write.Length;
+			}
 			IrpStack->CompletionRoutine = MyCompletionRoutine;
 			IrpStack->Context = MyContext;
 			IrpStack->Control = SL_INVOKE_ON_SUCCESS | SL_INVOKE_ON_ERROR | SL_INVOKE_ON_CANCEL;
@@ -98,6 +163,90 @@ DefaultDispatch(
 		status = (DrvEntry->DriverDispatch[IrpStack->MajorFunction])(DeviceObject, Irp);
 	}
 
+	return status;
+}
+
+NTSTATUS
+DMReadWrite(
+	PDEVICE_OBJECT	DeviceObject,
+	PIRP			Irp
+	)
+{
+	NTSTATUS			status;
+	PDEVICE_ENTRY		DevEntry;
+	PUCHAR				SysBuf;
+	ULONG				Length;
+	ULONGLONG			Offset;
+	PIO_STACK_LOCATION	IrpStack;
+
+	IrpStack = IoGetCurrentIrpStackLocation(Irp);
+
+	DevEntry = LookupEntryByDevObj(DeviceObject);
+	if (DevEntry && g_bStartMon)
+	{
+		// Get offset and length
+		if (IRP_MJ_READ == IrpStack->MajorFunction)
+		{
+			Offset = IrpStack->Parameters.Read.ByteOffset.QuadPart;
+			Length = IrpStack->Parameters.Read.Length;
+		}
+		else if (IRP_MJ_WRITE == IrpStack->MajorFunction)
+		{
+			Offset = IrpStack->Parameters.Write.ByteOffset.QuadPart;
+			Length = IrpStack->Parameters.Write.Length;
+		}
+		else
+		{
+			Offset = 0;
+			Length = 0;
+		}
+		if (0 == Length) // Ignore this IRP.
+		{
+			status = DefaultDispatch(DeviceObject, Irp);
+			goto ret;
+		}
+
+		// Get system buffer address
+		if (Irp->MdlAddress != NULL)
+			SysBuf = (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+		else
+			SysBuf = (PUCHAR)Irp->UserBuffer;
+		if (SysBuf == NULL)
+			SysBuf = (PUCHAR)Irp->AssociatedIrp.SystemBuffer;
+
+		// Read
+		if (IrpStack->MajorFunction == IRP_MJ_READ)
+		{
+			InterlockedIncrement(&DevEntry->ReadCount);
+			// if matched
+			if ( TRUE == QueryAndCopyFromCachePool(&DevEntry->CachePool,
+													SysBuf, Offset, Length) )
+			{
+				KdPrint(("cache hit\n"));
+				status = STATUS_SUCCESS;
+				Irp->IoStatus.Status = STATUS_SUCCESS;
+				Irp->IoStatus.Information = Length;
+				IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+			}
+			else
+			{
+				status = DefaultDispatch(DeviceObject, Irp);
+				// Update Pool in Completion Routine
+			}
+		}
+		else // Write
+		{
+			InterlockedIncrement(&DevEntry->WriteCount);
+			// Write through
+			status = DefaultDispatch(DeviceObject, Irp);
+			// Update Pool in Completion Routine
+		}
+	}
+	else
+	{
+		status = DefaultDispatch(DeviceObject, Irp);
+	}
+ret:
 	return status;
 }
 
@@ -131,120 +280,6 @@ DMCreateClose(
 		status = DefaultDispatch(DeviceObject, Irp);
 	}
 
-	return status;
-}
-
-NTSTATUS
-DMReadWrite(
-	PDEVICE_OBJECT	DeviceObject,
-	PIRP			Irp
-	)
-{
-	NTSTATUS			status;
-	PDEVICE_ENTRY		DevEntry;
-	PUCHAR				SysBuf, SysBuf1;
-	ULONG				Length;
-	ULONGLONG			Offset;
-	PIO_STACK_LOCATION	IrpStack;
-
-	IrpStack = IoGetCurrentIrpStackLocation(Irp);
-
-	DevEntry = LookupEntryByDevObj(DeviceObject);
-	if (DevEntry && g_bStartMon)
-	{
-		// Get system buffer address
-		if (Irp->MdlAddress)
-		{
-			SysBuf = (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
-		}
-		else
-		{
-			SysBuf = (PUCHAR)Irp->UserBuffer;
-		}
-		// Get offset and length
-		if (IRP_MJ_READ == IrpStack->MajorFunction)
-		{
-			Offset = IrpStack->Parameters.Read.ByteOffset.QuadPart;
-			Length = IrpStack->Parameters.Read.Length;
-		}
-		else if (IRP_MJ_WRITE == IrpStack->MajorFunction)
-		{
-			Offset = IrpStack->Parameters.Write.ByteOffset.QuadPart;
-			Length = IrpStack->Parameters.Write.Length;
-		}
-		else
-		{
-			Offset = 0;
-			Length = 0;
-		}
-		if (!SysBuf || !Length) // Ignore this IRP.
-		{
-			status = DefaultDispatch(DeviceObject, Irp);
-			goto ret;
-		}
-
-		// Read or Write
-		if (IrpStack->MajorFunction == IRP_MJ_READ)
-		{
-			InterlockedIncrement(&DevEntry->ReadCount);
-			// if matched
-			if ( TRUE == QueryAndCopyFromCachePool(&DevEntry->CachePool,
-													SysBuf, Offset, Length) )
-			{
-				KdPrint(("cache hit\n"));
-				status = STATUS_SUCCESS;
-				Irp->IoStatus.Status = STATUS_SUCCESS;
-				Irp->IoStatus.Information = Length;
-				IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-			}
-			else
-			{
-				status = DefaultDispatch(DeviceObject, Irp);
-				__try {
-					//ERROR: if not probe, chkdsk cause crash
-					//ProbeForRead(SysBuf, Length, TYPE_ALIGNMENT(char));
-					if (NT_SUCCESS(Irp->IoStatus.Status))
-					{
-						KdPrint(("%u-%u: R %p off=%I64d, len=%u\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
-								SysBuf, Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize));
-						UpdataCachePool(&DevEntry->CachePool,
-										SysBuf,
-										Offset,
-										Length,
-										_READ_);
-					}
-				} __except( EXCEPTION_EXECUTE_HANDLER ) {
-					/* Don't Update Pool */;
-					DbgPrint("Invalid access\n");
-				}
-			}
-		}
-		else
-		{
-			InterlockedIncrement(&DevEntry->WriteCount);
-			SysBuf1 = MALLOC(Length);
-			ASSERT(SysBuf1);
-			RtlCopyMemory(SysBuf1, SysBuf, Length);
-			// Write through
-			status = DefaultDispatch(DeviceObject, Irp);
-			if (NT_SUCCESS(Irp->IoStatus.Status))
-			{
-				KdPrint(("%u-%u: W %p off=%I64d, len=%u\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
-						SysBuf, Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize));
-				UpdataCachePool(&DevEntry->CachePool,
-								SysBuf1,
-								Offset,
-								Length,
-								_WRITE_);
-			}
-			FREE(SysBuf1);
-		}
-	}
-	else
-	{
-		status = DefaultDispatch(DeviceObject, Irp);
-	}
-ret:
 	return status;
 }
 

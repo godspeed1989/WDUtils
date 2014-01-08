@@ -4,26 +4,17 @@
 #define USER_APP
 #endif
 
-#ifdef USER_APP
-  #include <stdio.h>
-  #include <stdlib.h>
-  #include <assert.h>
-
-#else
-  #include <Ntddk.h>
-  #define BPT_POOL_TAG	'bptD'
-  #define MALLOC(n)		ExAllocatePoolWithTag (	\
-							NonPagedPool,		\
-							(SIZE_T)(n),		\
-							BPT_POOL_TAG		\
-						)
-  #define FREE(p)		ExFreePoolWithTag(p,BPT_POOL_TAG)
-  #define assert(expr)	ASSERT(expr)
-#endif
-
-#ifdef WINVER
+#ifndef USER_APP
 	#include <Ntddk.h>
 	#define CACHE_POOL_TAG						'cpiD'
+	#define BPT_POOL_TAG						'bptD'
+	#define assert(expr)						ASSERT(expr)
+	#define FREE(p)								ExFreePoolWithTag(p,BPT_POOL_TAG)
+	#define MALLOC(n)							ExAllocatePoolWithTag (	\
+													NonPagedPool,		\
+													(SIZE_T)(n),		\
+													BPT_POOL_TAG		\
+												)
 #else
 	#include <stdlib.h>
 	#include <string.h>
