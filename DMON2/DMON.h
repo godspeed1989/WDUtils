@@ -37,15 +37,23 @@ typedef struct _MYCONTEXT
 	PVOID			Context;
 	UCHAR			Control;
 	ULONG			MajorFunction;
-	PDEVICE_ENTRY	DevEntry;
-	ULONG			Length;
-	ULONGLONG		Offset;
+	PKEVENT			Kevent;
 }MYCONTEXT, *PMYCONTEXT;
 
 #ifdef ExAllocatePool
 #undef ExAllocatePool
 #endif
-#define ExAllocatePool(a,b) ExAllocatePoolWithTag(a,b,'noMD')
+#define ExAllocatePool(a,b)				ExAllocatePoolWithTag(a,b,'noMD')
+
+#define DBG_TRACE_ROUTINES				0x00000001
+#define DBG_TRACE_OPS					0x00000002
+#define DBG_TRACE_RW					0x00000004
+#define DBG_PRINT( _dbgLevel, _string ) \
+	( FlagOn(g_TraceFlags,(_dbgLevel) ) ? DbgPrint _string : ((void)0) )
+
+#define DELAY_ONE_MICROSECOND			(-10)
+#define DELAY_ONE_MILLISECOND			(DELAY_ONE_MICROSECOND*1000)
+#define DELAY_ONE_SECOND				(DELAY_ONE_MILLISECOND*1000)
 //----------------------------------------------------------------------
 //                     F U N C T I O N S
 //----------------------------------------------------------------------
@@ -68,7 +76,7 @@ VOID			AddDeviceToHookEntry (PDEVICE_OBJECT DeviceObject, ULONG DiskIndex, ULONG
 NTSTATUS		DMReadWrite (PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS		DMCreateClose (PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS		DMDeviceControl (PDEVICE_OBJECT DeviceObject, PIRP Irp);
-NTSTATUS		DefaultDispatch (PDEVICE_OBJECT DeviceObject, PIRP Irp);
+NTSTATUS		DefaultDispatch (PDEVICE_OBJECT DeviceObject, PIRP Irp, PKEVENT Kevent);
 NTSTATUS		DMShutDownFlushBuffer (PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS		MyCompletionRoutine (PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context);
 //----------------------------------------------------------------------
@@ -84,3 +92,4 @@ extern	PDEVICE_OBJECT			g_pDeviceObject;
 extern	KSPIN_LOCK				HashLock;
 extern	NPAGED_LOOKASIDE_LIST	ContextLookaside;
 extern	ULONG					g_uDispatchCount;
+extern	ULONG					g_TraceFlags;

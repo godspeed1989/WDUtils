@@ -14,85 +14,30 @@ MyCompletionRoutine(
 	PVOID			Context
 	)
 {
-	NTSTATUS				status;
 	UCHAR					Control;
 	PMYCONTEXT				MyContext;
 	PIO_COMPLETION_ROUTINE	CompletionRoutine;
-	PUCHAR					SysBuf;
-	PDEVICE_ENTRY			DevEntry;
-	ULONG					Length;
-	ULONGLONG				Offset;
 
 	MyContext = (PMYCONTEXT)Context;
 	Control = MyContext->Control;
 	Context = MyContext->Context;
 	CompletionRoutine = MyContext->CompletionRoutine;
-	DevEntry = MyContext->DevEntry;
-	Length = MyContext->Length;
-	Offset = MyContext->Offset;
 
-	if (g_bStartMon)
+	if (MyContext->Kevent && Irp->PendingReturned == TRUE)
 	{
-		// Get system buffer address
-		if (Irp->MdlAddress != NULL)
-			SysBuf = (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
-		else
-			SysBuf = (PUCHAR)Irp->UserBuffer;
-		if (SysBuf == NULL)
-			SysBuf = (PUCHAR)Irp->AssociatedIrp.SystemBuffer;
-		// Read
-		if (MyContext->MajorFunction == IRP_MJ_READ)
-		{
-			// Ignore this IRP
-			if (0 == Length)
-			{
-				goto ret;
-			}
-			if (NT_SUCCESS(Irp->IoStatus.Status))
-			{
-				KdPrint(("%u-%u: R %p %p off=%I64d, len=%u(%u)\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
-						Irp, SysBuf, Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize,
-						Irp->IoStatus.Information));
-				UpdataCachePool(&DevEntry->CachePool,
-								SysBuf,
-								Offset,
-								Length,
-								_READ_);
-			}
-		}
-		// Write
-		else if (MyContext->MajorFunction == IRP_MJ_WRITE)
-		{
-			// Ignore this IRP
-			if (0 == Length)
-			{
-				goto ret;
-			}
-			if (NT_SUCCESS(Irp->IoStatus.Status))
-			{
-				KdPrint(("%u-%u: W %p %p off=%I64d, len=%u(%u)\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
-						Irp, SysBuf, Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize,
-						Irp->IoStatus.Information));
-				UpdataCachePool(&DevEntry->CachePool,
-								SysBuf,
-								Offset,
-								Length,
-								_WRITE_);
-			}
-		}
+		KeSetEvent ((PKEVENT) MyContext->Kevent, IO_NO_INCREMENT, FALSE);
 	}
-ret:
+
 	ExFreeToNPagedLookasideList(&ContextLookaside, MyContext);
 	LEAVE_DISPATCH;
-	status = Irp->IoStatus.Status;
-	if( NT_SUCCESS(status) )
+	if( NT_SUCCESS(Irp->IoStatus.Status) )
 	{
 		if(Control & SL_INVOKE_ON_SUCCESS)
 		{
 			return CompletionRoutine(DeviceObject, Irp, Context);
 		}
 	}
-	else if(status == STATUS_CANCELLED)
+	else if(Irp->IoStatus.Status == STATUS_CANCELLED)
 	{
 		if(Control & SL_INVOKE_ON_CANCEL)
 		{
@@ -106,13 +51,14 @@ ret:
 			return CompletionRoutine(DeviceObject, Irp, Context);
 		}
 	}
-	return status;
+	return Irp->IoStatus.Status;
 }
 
 static NTSTATUS
 DefaultDispatch(
 	PDEVICE_OBJECT	DeviceObject,
-	PIRP			Irp
+	PIRP			Irp,
+	PKEVENT			Kevent
 	)
 {
 	NTSTATUS				status;
@@ -133,17 +79,8 @@ DefaultDispatch(
 			MyContext->Control = IrpStack->Control;
 			MyContext->MajorFunction = IrpStack->MajorFunction;
 			MyContext->CompletionRoutine = IrpStack->CompletionRoutine;
-			MyContext->DevEntry = DevEntry;
-			if(IrpStack->MajorFunction == IRP_MJ_READ)
-			{
-				MyContext->Offset = IrpStack->Parameters.Read.ByteOffset.QuadPart;
-				MyContext->Length = IrpStack->Parameters.Read.Length;
-			}
-			else if (IrpStack->MajorFunction == IRP_MJ_WRITE)
-			{
-				MyContext->Offset = IrpStack->Parameters.Write.ByteOffset.QuadPart;
-				MyContext->Length = IrpStack->Parameters.Write.Length;
-			}
+			MyContext->Kevent = Kevent;
+
 			IrpStack->CompletionRoutine = MyCompletionRoutine;
 			IrpStack->Context = MyContext;
 			IrpStack->Control = SL_INVOKE_ON_SUCCESS | SL_INVOKE_ON_ERROR | SL_INVOKE_ON_CANCEL;
@@ -173,6 +110,7 @@ DMReadWrite(
 	)
 {
 	NTSTATUS			status;
+	KEVENT				event;
 	PDEVICE_ENTRY		DevEntry;
 	PUCHAR				SysBuf;
 	ULONG				Length;
@@ -202,7 +140,7 @@ DMReadWrite(
 		}
 		if (0 == Length) // Ignore this IRP.
 		{
-			status = DefaultDispatch(DeviceObject, Irp);
+			status = DefaultDispatch(DeviceObject, Irp, NULL);
 			goto ret;
 		}
 
@@ -230,21 +168,61 @@ DMReadWrite(
 			}
 			else
 			{
-				status = DefaultDispatch(DeviceObject, Irp);
-				// Update Pool in Completion Routine
+				// Read through
+				KeInitializeEvent(&event, NotificationEvent, FALSE);
+				status = DefaultDispatch(DeviceObject, Irp, &event);
+				// Update Pool
+				if (status == STATUS_PENDING)
+				{
+					KeWaitForSingleObject( &event, Executive,
+											KernelMode, FALSE,
+											NULL /*indefinite wait*/ );
+				}
+				if (NT_SUCCESS(Irp->IoStatus.Status))
+				{
+					DBG_PRINT(DBG_TRACE_RW, ("%u-%u: R %p %p off=%I64d, len=%u(%u)\n",
+								DevEntry->DiskNumber, DevEntry->PartitionNumber,
+								Irp, SysBuf, Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize,
+								Irp->IoStatus.Information/DevEntry->SectorSize));
+					UpdataCachePool(&DevEntry->CachePool,
+									SysBuf,
+									Offset,
+									Length,
+									_WRITE_);
+				}
 			}
 		}
-		else // Write
+		// Write
+		else
 		{
 			InterlockedIncrement(&DevEntry->WriteCount);
 			// Write through
-			status = DefaultDispatch(DeviceObject, Irp);
-			// Update Pool in Completion Routine
+			KeInitializeEvent(&event, NotificationEvent, FALSE);
+			status = DefaultDispatch(DeviceObject, Irp, &event);
+			// Update Pool
+			if (status == STATUS_PENDING)
+			{
+				KeWaitForSingleObject( &event, Executive,
+										KernelMode, FALSE,
+										NULL /*indefinite wait*/ );
+			}
+			if (NT_SUCCESS(Irp->IoStatus.Status))
+			{
+				DBG_PRINT(DBG_TRACE_RW, ("%u-%u: W %p %p off=%I64d, len=%u(%u)\n",
+							DevEntry->DiskNumber, DevEntry->PartitionNumber,
+							Irp, SysBuf, Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize,
+							Irp->IoStatus.Information/DevEntry->SectorSize));
+				UpdataCachePool(&DevEntry->CachePool,
+								SysBuf,
+								Offset,
+								Length,
+								_WRITE_);
+			}
 		}
 	}
 	else
 	{
-		status = DefaultDispatch(DeviceObject, Irp);
+		status = DefaultDispatch(DeviceObject, Irp, NULL);
 	}
 ret:
 	return status;
@@ -266,18 +244,14 @@ DMCreateClose(
 	{
 		Irp->IoStatus.Status = STATUS_SUCCESS;
 		Irp->IoStatus.Information = 0;
-		KdPrint(("DMon: opened\n"));
+		DBG_PRINT(DBG_TRACE_OPS, ("DMon: opened\n"));
 		IoCompleteRequest(Irp, IO_NO_INCREMENT);
 		status = STATUS_SUCCESS;
 	}
 	else
 	{
 		DevEntry = LookupEntryByDevObj(DeviceObject);
-		if (DevEntry && g_bStartMon)
-		{
-			KdPrint(("%u-%u: Create\n", DevEntry->DiskNumber, DevEntry->PartitionNumber));
-		}
-		status = DefaultDispatch(DeviceObject, Irp);
+		status = DefaultDispatch(DeviceObject, Irp, NULL);
 	}
 
 	return status;
@@ -302,31 +276,31 @@ DMDeviceIoCtl(
 	{
 	case IOCTL_DMON_ZEROSTATS:
 		{
-			DbgPrint("Diskmon: zero stats\n");
+			DBG_PRINT(DBG_TRACE_OPS, ("Diskmon: zero stats\n"));
 			//todo
 		}
 		break;
 	case IOCTL_DMON_GETSTATS:
 		{
-			DbgPrint("Diskmon: get stats\n");
+			DBG_PRINT(DBG_TRACE_OPS, ("Diskmon: get stats\n"));
 			//todo
 		}
 		break;
 	case IOCTL_DMON_STOPFILTER:
 		{
-			DbgPrint("Diskmon: stop logging\n");
+			DBG_PRINT(DBG_TRACE_OPS, ("Diskmon: stop logging\n"));
 			g_bStartMon = FALSE;
 		}
 		break;
 	case IOCTL_DMON_STARTFILTER:
 		{
-			DbgPrint("Diskmon: start logging\n");
+			DBG_PRINT(DBG_TRACE_OPS, ("Diskmon: start logging\n"));
 			g_bStartMon = TRUE;
 		}
 		break;
 	default:
 		{
-			DbgPrint("Diskmon: unknown IRP_MJ_DEVICE_CONTROL\n");
+			DBG_PRINT(DBG_TRACE_OPS, ("Diskmon: unknown IRP_MJ_DEVICE_CONTROL\n"));
 			Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
 		}
 		break;
@@ -372,13 +346,7 @@ DMDeviceControl(
 	else
 	{
 		DevEntry = LookupEntryByDevObj(DeviceObject);
-		if ( DevEntry && g_bStartMon)
-		{
-			//log it
-			KdPrint(("%u-%u: %s\n", DevEntry->DiskNumber, DevEntry->PartitionNumber, "IRP_MJ_DEVICE_CONTROL"));
-		}
-
-		status = DefaultDispatch(DeviceObject, Irp);
+		status = DefaultDispatch(DeviceObject, Irp, NULL);
 	}
 
 	return status;
@@ -399,9 +367,10 @@ DMShutDownFlushBuffer(
 	DevEntry = LookupEntryByDevObj(DeviceObject);
 	if (DevEntry && g_bStartMon)
 	{
-		KdPrint(("%u-%u: %s\n", DevEntry->DiskNumber, DevEntry->PartitionNumber, IrpStack->MajorFunction == IRP_MJ_SHUTDOWN ? "IRP_MJ_SHUTDOWN" : "IRP_MJ_FLUSH_BUFFERS"));
+		DBG_PRINT(DBG_TRACE_OPS, ("%u-%u: %s\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
+			IrpStack->MajorFunction == IRP_MJ_SHUTDOWN ? "IRP_MJ_SHUTDOWN" : "IRP_MJ_FLUSH_BUFFERS"));
 	}
-	status = DefaultDispatch(DeviceObject, Irp);
+	status = DefaultDispatch(DeviceObject, Irp, NULL);
 
 	return status;
 }

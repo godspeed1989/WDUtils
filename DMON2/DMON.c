@@ -12,10 +12,7 @@ PDEVICE_OBJECT			g_pDeviceObject;
 KSPIN_LOCK				HashLock;
 NPAGED_LOOKASIDE_LIST	ContextLookaside;
 ULONG					g_uDispatchCount;
-
-#define    DELAY_ONE_MICROSECOND    (-10)
-#define    DELAY_ONE_MILLISECOND    (DELAY_ONE_MICROSECOND*1000)
-#define    DELAY_ONE_SECOND         (DELAY_ONE_MILLISECOND*1000)
+ULONG					g_TraceFlags;
 
 //----------------------------------------------------------------------
 //                         R O U T I N E S
@@ -23,6 +20,7 @@ ULONG					g_uDispatchCount;
 VOID
 DriverUnload(PDRIVER_OBJECT driver)
 {
+	// DRIVER_UNLOADED_WITHOUT_CANCELLING_PENDING_OPERATIONS
 	ULONG			i;
 	KIRQL			OldIrql;
 	PDRIVER_ENTRY	DrvEntry, prevDrvEntry;
@@ -30,8 +28,8 @@ DriverUnload(PDRIVER_OBJECT driver)
 	UNICODE_STRING	SymbolicLinkName;
 	LONG			value;
 	LARGE_INTEGER	lDelay;
-	DbgPrint("DMon: unloading %u ...\n", g_uDispatchCount);
 
+	DBG_PRINT(DBG_TRACE_ROUTINES, ("DMon: unloading %u ...\n", g_uDispatchCount));
 	g_bStartMon = FALSE;
 
 	RtlInitUnicodeString(&SymbolicLinkName, L"\\DosDevices\\Dmon");
@@ -74,7 +72,7 @@ DriverUnload(PDRIVER_OBJECT driver)
 
 	IoDeleteDevice(g_pDeviceObject);
 	ExDeleteNPagedLookasideList(&ContextLookaside);
-	DbgPrint("DMon: unloaded\n");
+	DBG_PRINT(DBG_TRACE_ROUTINES, ("DMon: unloaded\n"));
 }
 
 NTSTATUS
@@ -89,6 +87,7 @@ DriverEntry(
 
 	g_bStartMon = FALSE;
 	g_pDriverObject = DriverObject;
+	g_TraceFlags = DBG_TRACE_ROUTINES | DBG_TRACE_OPS | DBG_TRACE_RW;
 
 	RtlInitUnicodeString(&DeviceName, L"\\Device\\Dmon");
 	status = IoCreateDevice(DriverObject, 0,
