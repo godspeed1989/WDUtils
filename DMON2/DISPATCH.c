@@ -14,51 +14,64 @@ MyCompletionRoutine(
 	PVOID			Context
 	)
 {
+	NTSTATUS				status;
 	UCHAR					Control;
 	PMYCONTEXT				MyContext;
 	PIO_COMPLETION_ROUTINE	CompletionRoutine;
+	KIRQL					oldIrql;
+	PKSPIN_LOCK				finishedProc;
 
 	MyContext = (PMYCONTEXT)Context;
 	Control = MyContext->Control;
 	Context = MyContext->Context;
 	CompletionRoutine = MyContext->CompletionRoutine;
+	finishedProc = MyContext->finishedProc;
 
-	if (MyContext->Kevent && Irp->PendingReturned == TRUE)
+	if (MyContext->startKevent && Irp->PendingReturned == TRUE)
 	{
-		KeSetEvent ((PKEVENT) MyContext->Kevent, IO_NO_INCREMENT, FALSE);
+		KeSetEvent ((PKEVENT) MyContext->startKevent, IO_NO_INCREMENT, FALSE);
 	}
+	// Dispatch Function Processing IRP...
+	// Wait for Process Finished
+	if (finishedProc)
+		KeAcquireSpinLock(finishedProc, &oldIrql);
 
-	ExFreeToNPagedLookasideList(&ContextLookaside, MyContext);
-	LEAVE_DISPATCH;
+	status = Irp->IoStatus.Status;
 	if( NT_SUCCESS(Irp->IoStatus.Status) )
 	{
 		if(Control & SL_INVOKE_ON_SUCCESS)
 		{
-			return CompletionRoutine(DeviceObject, Irp, Context);
+			status = CompletionRoutine(DeviceObject, Irp, Context);
 		}
 	}
 	else if(Irp->IoStatus.Status == STATUS_CANCELLED)
 	{
 		if(Control & SL_INVOKE_ON_CANCEL)
 		{
-			return CompletionRoutine(DeviceObject, Irp, Context);
+			status = CompletionRoutine(DeviceObject, Irp, Context);
 		}
 	}
 	else
 	{
 		if(Control & SL_INVOKE_ON_ERROR)
 		{
-			return CompletionRoutine(DeviceObject, Irp, Context);
+			status = CompletionRoutine(DeviceObject, Irp, Context);
 		}
 	}
-	return Irp->IoStatus.Status;
+
+	ExFreeToNPagedLookasideList(&ContextLookaside, MyContext);
+	if (finishedProc)
+		KeReleaseSpinLock(finishedProc, oldIrql);
+	LEAVE_DISPATCH;
+	return status;
 }
 
 static NTSTATUS
 DefaultDispatch(
 	PDEVICE_OBJECT	DeviceObject,
 	PIRP			Irp,
-	PKEVENT			Kevent
+	PKEVENT			startKevent,
+	PKSPIN_LOCK		finishedProc
 	)
 {
 	NTSTATUS				status;
@@ -79,7 +92,8 @@ DefaultDispatch(
 			MyContext->Control = IrpStack->Control;
 			MyContext->MajorFunction = IrpStack->MajorFunction;
 			MyContext->CompletionRoutine = IrpStack->CompletionRoutine;
-			MyContext->Kevent = Kevent;
+			MyContext->startKevent = startKevent;
+			MyContext->finishedProc = finishedProc;
 
 			IrpStack->CompletionRoutine = MyCompletionRoutine;
 			IrpStack->Context = MyContext;
@@ -110,7 +124,8 @@ DMReadWrite(
 	)
 {
 	NTSTATUS			status;
-	KEVENT				event;
+	KEVENT				startKevent;
+	KSPIN_LOCK			finishedProc;
 	PDEVICE_ENTRY		DevEntry;
 	PUCHAR				SysBuf;
 	ULONG				Length;
@@ -140,7 +155,7 @@ DMReadWrite(
 		}
 		if (0 == Length) // Ignore this IRP.
 		{
-			status = DefaultDispatch(DeviceObject, Irp, NULL);
+			status = DefaultDispatch(DeviceObject, Irp, NULL, NULL);
 			goto ret;
 		}
 
@@ -169,15 +184,18 @@ DMReadWrite(
 			else
 			{
 				// Read through
-				KeInitializeEvent(&event, NotificationEvent, FALSE);
-				status = DefaultDispatch(DeviceObject, Irp, &event);
-				// Update Pool
+				KeInitializeEvent(&startKevent, NotificationEvent, FALSE);
+				KeInitializeSpinLock(&finishedProc);
+				KeAcquireSpinLockAtDpcLevel(&finishedProc);
+				status = DefaultDispatch(DeviceObject, Irp, &startKevent, &finishedProc);
+				// Wait for Pending
 				if (status == STATUS_PENDING)
 				{
-					KeWaitForSingleObject( &event, Executive,
+					KeWaitForSingleObject( &startKevent, Executive,
 											KernelMode, FALSE,
 											NULL /*indefinite wait*/ );
 				}
+				// Update Pool
 				if (NT_SUCCESS(Irp->IoStatus.Status))
 				{
 					DBG_PRINT(DBG_TRACE_RW, ("%u-%u: R %p %p off=%I64d, len=%u(%u)\n",
@@ -190,6 +208,8 @@ DMReadWrite(
 									Length,
 									_WRITE_);
 				}
+				// Process finished
+				KeReleaseSpinLockFromDpcLevel(&finishedProc);
 			}
 		}
 		// Write
@@ -197,15 +217,18 @@ DMReadWrite(
 		{
 			InterlockedIncrement(&DevEntry->WriteCount);
 			// Write through
-			KeInitializeEvent(&event, NotificationEvent, FALSE);
-			status = DefaultDispatch(DeviceObject, Irp, &event);
-			// Update Pool
+			KeInitializeEvent(&startKevent, NotificationEvent, FALSE);
+			KeInitializeSpinLock(&finishedProc);
+			KeAcquireSpinLockAtDpcLevel(&finishedProc);
+			status = DefaultDispatch(DeviceObject, Irp, &startKevent, &finishedProc);
+			// Wait for Pending
 			if (status == STATUS_PENDING)
 			{
-				KeWaitForSingleObject( &event, Executive,
+				KeWaitForSingleObject( &startKevent, Executive,
 										KernelMode, FALSE,
 										NULL /*indefinite wait*/ );
 			}
+			// Update Pool
 			if (NT_SUCCESS(Irp->IoStatus.Status))
 			{
 				DBG_PRINT(DBG_TRACE_RW, ("%u-%u: W %p %p off=%I64d, len=%u(%u)\n",
@@ -218,11 +241,13 @@ DMReadWrite(
 								Length,
 								_WRITE_);
 			}
+			// Process finished
+			KeReleaseSpinLockFromDpcLevel(&finishedProc);
 		}
 	}
 	else
 	{
-		status = DefaultDispatch(DeviceObject, Irp, NULL);
+		status = DefaultDispatch(DeviceObject, Irp, NULL, NULL);
 	}
 ret:
 	return status;
@@ -251,7 +276,7 @@ DMCreateClose(
 	else
 	{
 		DevEntry = LookupEntryByDevObj(DeviceObject);
-		status = DefaultDispatch(DeviceObject, Irp, NULL);
+		status = DefaultDispatch(DeviceObject, Irp, NULL, NULL);
 	}
 
 	return status;
@@ -346,7 +371,7 @@ DMDeviceControl(
 	else
 	{
 		DevEntry = LookupEntryByDevObj(DeviceObject);
-		status = DefaultDispatch(DeviceObject, Irp, NULL);
+		status = DefaultDispatch(DeviceObject, Irp, NULL, NULL);
 	}
 
 	return status;
@@ -370,7 +395,7 @@ DMShutDownFlushBuffer(
 		DBG_PRINT(DBG_TRACE_OPS, ("%u-%u: %s\n", DevEntry->DiskNumber, DevEntry->PartitionNumber,
 			IrpStack->MajorFunction == IRP_MJ_SHUTDOWN ? "IRP_MJ_SHUTDOWN" : "IRP_MJ_FLUSH_BUFFERS"));
 	}
-	status = DefaultDispatch(DeviceObject, Irp, NULL);
+	status = DefaultDispatch(DeviceObject, Irp, NULL, NULL);
 
 	return status;
 }

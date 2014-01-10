@@ -37,7 +37,8 @@ typedef struct _MYCONTEXT
 	PVOID			Context;
 	UCHAR			Control;
 	ULONG			MajorFunction;
-	PKEVENT			Kevent;
+	PKEVENT			startKevent;
+	PKSPIN_LOCK		finishedProc;
 }MYCONTEXT, *PMYCONTEXT;
 
 #ifdef ExAllocatePool
@@ -76,7 +77,8 @@ VOID			AddDeviceToHookEntry (PDEVICE_OBJECT DeviceObject, ULONG DiskIndex, ULONG
 NTSTATUS		DMReadWrite (PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS		DMCreateClose (PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS		DMDeviceControl (PDEVICE_OBJECT DeviceObject, PIRP Irp);
-NTSTATUS		DefaultDispatch (PDEVICE_OBJECT DeviceObject, PIRP Irp, PKEVENT Kevent);
+NTSTATUS		DefaultDispatch (PDEVICE_OBJECT DeviceObject, PIRP Irp,
+								PKEVENT startKevent, PKSPIN_LOCK finishedProc);
 NTSTATUS		DMShutDownFlushBuffer (PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS		MyCompletionRoutine (PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context);
 //----------------------------------------------------------------------
