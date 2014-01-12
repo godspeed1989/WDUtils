@@ -15,8 +15,6 @@ DRIVER_UNLOAD			DiskFilter_DriverUnload;
 
 DRIVER_REINITIALIZE		DiskFilter_DriverReinitializeRoutine;
 
-KSTART_ROUTINE 			DiskFilter_ReadWriteThread;
-
 DRIVER_DISPATCH			DiskFilter_DispatchDefault;
 
 DRIVER_DISPATCH			DiskFilter_DispatchReadWrite;
@@ -38,14 +36,6 @@ NTSTATUS
 		PUNICODE_STRING RegistryPath
 	);
 
-NTSTATUS
-	DiskFilter_InitCacheAndCreateThread (
-		PDISKFILTER_DEVICE_EXTENSION DevExt
-	);
-
-VOID
-	DiskFilter_ReadWriteThread (PVOID Context);
-
 #pragma alloc_text("INIT",  DriverEntry)
 #pragma alloc_text("PAGED", DiskFilter_AddDevice)
 #pragma alloc_text("PAGED", DiskFilter_DriverUnload)
@@ -54,3 +44,11 @@ VOID
 #pragma alloc_text("PAGED", DiskFilter_DispatchPnp)
 #pragma alloc_text("PAGED", DiskFilter_DispatchPower)
 #pragma alloc_text("PAGED", DiskFilter_DispatchControl)
+
+#define DBG_TRACE_ROUTINES				0x00000001
+#define DBG_TRACE_OPS					0x00000002
+#define DBG_TRACE_RW					0x00000004
+#define DBG_PRINT( _dbgLevel, _string ) \
+	( FlagOn(g_TraceFlags,(_dbgLevel) ) ? DbgPrint _string : ((void)0) )
+
+extern	ULONG				g_TraceFlags;

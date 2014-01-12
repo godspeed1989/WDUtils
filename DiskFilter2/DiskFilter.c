@@ -1,5 +1,7 @@
 #include "DiskFilter.h"
 
+ULONG				g_TraceFlags;
+
 NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject,
 					 PUNICODE_STRING RegistryPath
 					 )
@@ -9,6 +11,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject,
 	PDISKFILTER_DRIVER_EXTENSION DrvExt = NULL;
 	ULONG ClientId;
 
+	g_TraceFlags = DBG_TRACE_ROUTINES | DBG_TRACE_OPS | DBG_TRACE_RW;
 	for (i = 0; i<=IRP_MJ_MAXIMUM_FUNCTION; ++i)
 	{
 		DriverObject->MajorFunction[i] = DiskFilter_DispatchDefault;
@@ -138,7 +141,7 @@ VOID DiskFilter_DriverReinitializeRoutine (
 
 	UNREFERENCED_PARAMETER(Context);
 	UNREFERENCED_PARAMETER(Count);
-	KdPrint(("Start Reinitialize...\n"));
+	DBG_PRINT(DBG_TRACE_ROUTINES, ("Start Reinitialize...\n"));
 
 	//	Enumerate device.
 	for(; DeviceObject; DeviceObject = DeviceObject->NextDevice)
@@ -161,14 +164,11 @@ NTSTATUS DiskFilter_AddDevice(PDRIVER_OBJECT DriverObject,
 							  )
 {
 	NTSTATUS Status;
-
 	PDISKFILTER_DEVICE_EXTENSION DevExt;
-
 	PDEVICE_OBJECT DeviceObject = NULL;
 	PDEVICE_OBJECT LowerDeviceObject = NULL;
-
 	PAGED_CODE();
-	KdPrint(("DiskFilter_AddDevice: Enter\n"));
+	DBG_PRINT(DBG_TRACE_ROUTINES, ("DiskFilter_AddDevice: Enter\n"));
 
 	// Create a device
 	Status = IoCreateDevice(DriverObject,
@@ -200,12 +200,6 @@ NTSTATUS DiskFilter_AddDevice(PDRIVER_OBJECT DriverObject,
 	DevExt->LowerDeviceObject = LowerDeviceObject;
 	KeInitializeEvent(&DevExt->PagingCountEvent, NotificationEvent, TRUE);
 
-	InitializeListHead(&DevExt->RwList);
-	KeInitializeSpinLock(&DevExt->RwSpinLock);
-	KeInitializeEvent(&DevExt->RwThreadEvent, SynchronizationEvent, FALSE);
-	DevExt->bTerminalThread = FALSE;
-	DevExt->RwThreadObject = NULL;
-
 	DeviceObject->Flags = (LowerDeviceObject->Flags & (DO_DIRECT_IO | DO_BUFFERED_IO))| DO_POWER_PAGABLE;
 	DeviceObject->Characteristics = LowerDeviceObject->Characteristics;
 	DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
@@ -220,182 +214,4 @@ l_error:
 		IoDeleteDevice(DeviceObject);
 	}
 	return STATUS_UNSUCCESSFUL;
-}
-
-NTSTATUS DiskFilter_InitCacheAndCreateThread(PDISKFILTER_DEVICE_EXTENSION DevExt)
-{
-	NTSTATUS Status;
-	HANDLE hThread;
-	KdPrint((": DiskFilter_InitBitMapAndCreateThread: Enter\n"));
-
-	if (InitCachePool(&DevExt->CachePool) == FALSE)
-	{
-		KdPrint(("Initial Cache Pool Failed!\n"));
-		return STATUS_UNSUCCESSFUL;
-	}
-	Status = PsCreateSystemThread (
-				&hThread,
-				(ULONG)0, NULL, NULL, NULL,
-				DiskFilter_ReadWriteThread, (PVOID)DevExt
-			);
-	if (!NT_SUCCESS(Status))
-	{
-		KdPrint(("Create R/W Failed!\n"));
-		goto l_error;
-	}
-	// Reference thread object.
-	Status = ObReferenceObjectByHandle(
-		hThread,
-		THREAD_ALL_ACCESS,
-		NULL,
-		KernelMode,
-		&DevExt->RwThreadObject,
-		NULL
-	);
-	ZwClose(hThread);
-	if (NT_SUCCESS(Status))
-	{
-		return STATUS_SUCCESS;
-	}
-l_error:
-	// Terminate thread.
-	DevExt->RwThreadObject = 0;
-	DevExt->bTerminalThread = TRUE;
-	KeSetEvent(&DevExt->RwThreadEvent, (KPRIORITY)0, FALSE);
-	return STATUS_UNSUCCESSFUL;
-}
-
-VOID DiskFilter_ReadWriteThread(PVOID Context)
-{
-	PIRP Irp = NULL;
-	PLIST_ENTRY ReqEntry = NULL;
-	PIO_STACK_LOCATION IrpSp;
-	PUCHAR SysBuf, SysBuf1;
-	LARGE_INTEGER Offset;
-	ULONG Length;
-	PDISKFILTER_DEVICE_EXTENSION DevExt = (PDISKFILTER_DEVICE_EXTENSION)Context;
-
-	KdPrint((": Start Read Write Thread\n"));
-
-	// set thread priority.
-	KeSetPriorityThread(KeGetCurrentThread(), LOW_REALTIME_PRIORITY);
-	for (;;)
-	{
-		KeWaitForSingleObject(&DevExt->RwThreadEvent,
-			Executive, KernelMode, FALSE, NULL);
-		if (DevExt->bTerminalThread)
-		{
-			PsTerminateSystemThread(STATUS_SUCCESS);
-			return;
-		}
-
-		while(NULL != (ReqEntry = ExInterlockedRemoveHeadList(
-						&DevExt->RwList, &DevExt->RwSpinLock)))
-		{
-			Irp = CONTAINING_RECORD(ReqEntry, IRP, Tail.Overlay.ListEntry);
-			IrpSp = IoGetCurrentIrpStackLocation(Irp);
-			// Get system buffer address
-			if (Irp->MdlAddress)
-			{
-				SysBuf = (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
-			}
-			else
-			{
-				SysBuf = (PUCHAR)Irp->UserBuffer;
-			}
-			// Get offset and length
-			if (IRP_MJ_READ == IrpSp->MajorFunction)
-			{
-				Offset = IrpSp->Parameters.Read.ByteOffset;
-				Length = IrpSp->Parameters.Read.Length;
-			}
-			else if (IRP_MJ_WRITE == IrpSp->MajorFunction)
-			{
-				Offset = IrpSp->Parameters.Write.ByteOffset;
-				Length = IrpSp->Parameters.Write.Length;
-			}
-			else
-			{
-				Offset.QuadPart = 0;
-				Length = 0;
-			}
-
-			if (!SysBuf || !Length) // Ignore this IRP.
-			{
-				IoSkipCurrentIrpStackLocation(Irp);
-				IoCallDriver(DevExt->LowerDeviceObject, Irp);
-				continue;
-			}
-		#if 0
-			if (IrpSp->MajorFunction == IRP_MJ_READ)
-				KdPrint(("[R off(%I64d) len(%x)]\n", Offset.QuadPart, Length));
-			else
-				KdPrint(("[W off(%I64d) len(%x)]\n", Offset.QuadPart, Length));
-		#endif
-			// Read Request
-			if (IrpSp->MajorFunction == IRP_MJ_READ)
-			{
-				// Cache Full Matched
-				if (QueryAndCopyFromCachePool(
-						&DevExt->CachePool,
-						SysBuf,
-						Offset.QuadPart,
-						Length) == TRUE)
-				{
-					KdPrint(("^^^^cache hit^^^^\n"));
-					KdPrint(("[R off(%I64d) len(%x)]\n", Offset.QuadPart, Length));
-					Irp->IoStatus.Status = STATUS_SUCCESS;
-					Irp->IoStatus.Information = Length;
-					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-					continue;
-				}
-				else
-				{
-					Irp->IoStatus.Information = 0;
-					Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-
-					IoForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp);
-					if (NT_SUCCESS(Irp->IoStatus.Status))
-					{
-						UpdataCachePool(&DevExt->CachePool,
-										SysBuf,
-										Offset.QuadPart,
-										Length,
-										_READ_);
-					}
-					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-					continue;
-				}
-			}
-			// Write Request
-			else
-			{
-				Irp->IoStatus.Information = 0;
-				Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-				SysBuf1 = MALLOC(Length);
-				ASSERT(SysBuf1);
-				RtlCopyMemory(SysBuf1, SysBuf, Length);
-				IoForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp);
-				if (NT_SUCCESS(Irp->IoStatus.Status))
-				{
-					UpdataCachePool(&DevExt->CachePool,
-									SysBuf1,
-									Offset.QuadPart,
-									Length,
-									_WRITE_);
-					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-					continue;
-				}
-				else
-				{
-					Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-					Irp->IoStatus.Information = 0;
-					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-					continue;
-				}
-				FREE(SysBuf1);
-			}
-		} // End of travel list.
-	}
-	return;
 }

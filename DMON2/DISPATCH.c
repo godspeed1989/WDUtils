@@ -129,7 +129,7 @@ DMReadWrite(
 	PDEVICE_ENTRY		DevEntry;
 	PUCHAR				SysBuf;
 	ULONG				Length;
-	ULONGLONG			Offset;
+	LONGLONG			Offset;
 	PIO_STACK_LOCATION	IrpStack;
 
 	IrpStack = IoGetCurrentIrpStackLocation(Irp);

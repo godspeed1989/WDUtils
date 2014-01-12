@@ -6,7 +6,7 @@
 #define _READ_								TRUE
 #define _WRITE_								FALSE
 #define SECTOR_SIZE							512
-#define CACHE_POOL_SIZE						8192 /*crash @ 8192*/
+#define CACHE_POOL_SIZE						(2048*20)
 
 typedef struct _CACHE_BLOCK
 {

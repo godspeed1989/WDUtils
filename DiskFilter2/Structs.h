@@ -45,11 +45,5 @@ typedef struct _DISKFILTER_DEVICE_EXTENSION
 	ULONG			ClusterSize;	//	Cluster size of this volume in bytes.
 	ULONG			SectorSize;		//	Sector size of this volume in bytes.
 
-	LIST_ENTRY		RwList;
-	PVOID			RwThreadObject;
-	BOOLEAN			bTerminalThread;
-	KEVENT			RwThreadEvent;
-	KSPIN_LOCK		RwSpinLock;
-
 	CACHE_POOL		CachePool;
 } DISKFILTER_DEVICE_EXTENSION, *PDISKFILTER_DEVICE_EXTENSION;
