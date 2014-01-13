@@ -159,13 +159,14 @@ DMReadWrite(
 			goto ret;
 		}
 
+		// TODO: crash on get accurate address 
 		// Get system buffer address
 		if (Irp->MdlAddress != NULL)
 			SysBuf = (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
 		else
-			SysBuf = (PUCHAR)Irp->UserBuffer;
-		if (SysBuf == NULL)
 			SysBuf = (PUCHAR)Irp->AssociatedIrp.SystemBuffer;
+		if (SysBuf == NULL)
+			SysBuf = (PUCHAR)Irp->UserBuffer;
 
 		// Read
 		if (IrpStack->MajorFunction == IRP_MJ_READ)
@@ -206,7 +207,7 @@ DMReadWrite(
 									SysBuf,
 									Offset,
 									Length,
-									_WRITE_);
+									_READ_);
 				}
 				// Process finished
 				KeReleaseSpinLockFromDpcLevel(&finishedProc);

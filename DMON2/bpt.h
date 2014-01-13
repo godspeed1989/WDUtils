@@ -33,7 +33,7 @@ void Free_Node ( node * n );
 extern void Free_Record ( record * n );
 
 node * Insert ( node * root, KEY_T key, record * r );
-node * Delete ( node * root, KEY_T key, BOOLEAN free );
+node * Delete ( node * root, KEY_T key, BOOLEAN free, PBOOLEAN deleted );
 
 node * Find_Leaf ( node * root, KEY_T key );
 record * Find_Record ( node * root, KEY_T key );

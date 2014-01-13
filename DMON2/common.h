@@ -36,6 +36,7 @@
 	typedef unsigned int						SIZE_T;
 	typedef unsigned long						ULONG;
 	typedef unsigned char						BOOLEAN;
+	typedef unsigned char*						PBOOLEAN;
 	typedef unsigned char						UCHAR;
 	typedef unsigned char*						PUCHAR;
 	typedef union _LARGE_INTEGER

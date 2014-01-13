@@ -121,10 +121,11 @@ NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 	PIRP   Irp	= NULL;
 	KEVENT Event;
 	PARTITION_INFORMATION PartitionInfo;
+	VOLUME_DISK_EXTENTS VolumeDiskExt;
 	PDISKFILTER_DEVICE_EXTENSION DevExt = (PDISKFILTER_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
 	KdPrint((": DiskFilter_QueryVolumeInfo: Enter\n"));
-	// Build IRP to get PartitionLength
+	// Build IRP to get Partition Length
 	KeInitializeEvent(&Event, NotificationEvent, FALSE);
 	Irp = IoBuildDeviceIoControlRequest(
 		IOCTL_DISK_GET_PARTITION_INFO,
@@ -139,7 +140,7 @@ NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 	);
 	if (NULL == Irp)
 	{
-		KdPrint(("Build IOCTL IRP failed!\n"));
+		KdPrint(("Build IOCTL IRP failed1!\n"));
 		Status = STATUS_UNSUCCESSFUL;
 		return Status;
 	}
@@ -148,13 +149,46 @@ NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 		KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
 		if (!NT_SUCCESS(Irp->IoStatus.Status))
 		{
-			KdPrint(("Forward IOCTL IRP failed!\n"));
+			KdPrint(("Forward IOCTL IRP failed1!\n"));
 			Status = STATUS_UNSUCCESSFUL;
 			goto ERROUT;
 		}
 	}
 	DevExt->TotalSize = PartitionInfo.PartitionLength;
+	DevExt->PartitionNumber = PartitionInfo.PartitionNumber;
 
+	// Build IRP to get Disk Number
+	KeInitializeEvent(&Event, NotificationEvent, FALSE);
+	Irp = IoBuildDeviceIoControlRequest(
+		IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS,
+		DevExt->PhysicalDeviceObject,
+		NULL,
+		0,
+		&VolumeDiskExt,
+		sizeof(VOLUME_DISK_EXTENTS),
+		FALSE,
+		&Event,
+		&ios
+	);
+	if (NULL == Irp)
+	{
+		KdPrint(("Build IOCTL IRP failed2!\n"));
+		Status = STATUS_UNSUCCESSFUL;
+		return Status;
+	}
+	if (IoCallDriver(DevExt->PhysicalDeviceObject, Irp) == STATUS_PENDING)
+	{
+		KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+		if (!NT_SUCCESS(Irp->IoStatus.Status))
+		{
+			KdPrint(("Forward IOCTL IRP failed2!\n"));
+			Status = STATUS_UNSUCCESSFUL;
+			goto ERROUT;
+		}
+	}
+	DevExt->DiskNumber = VolumeDiskExt.Extents[0].DiskNumber;
+
+	// Read DBR
 	Status = IoDoRequestSync (
 		IRP_MJ_READ,
 		DevExt->PhysicalDeviceObject,
@@ -167,7 +201,6 @@ NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 		DbgPrint("Forward IRP failed!\n");
 		goto ERROUT;
 	}
-
 	// Distinguish the file system.
 	if (*(ULONG32*)NTFSFLG == *(ULONG32*)&DBR[NTFS_SIG_OFFSET])
 	{
@@ -189,12 +222,11 @@ NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 	}
 	else
 	{
-		//	Unknown file system.
 		KdPrint(("file system can't be recongnized\n"));
-		Status = STATUS_UNSUCCESSFUL;
 	}
 
-	KdPrint((": Sector = %d, Cluster = %d, Total = %I64d\n",
+	KdPrint((": %u-%u Sector = %d, Cluster = %d, Total = %I64d\n",
+				DevExt->DiskNumber, DevExt->PartitionNumber,
 				DevExt->SectorSize, DevExt->ClusterSize, DevExt->TotalSize));
 
 ERROUT:

@@ -41,9 +41,11 @@ typedef struct _DISKFILTER_DEVICE_EXTENSION
 	BOOLEAN			bIsProtectedVolume;
 	UNICODE_STRING	VolumeDosName;
 
-	LARGE_INTEGER	TotalSize;		//	Total size of this volume in bytes.
-	ULONG			ClusterSize;	//	Cluster size of this volume in bytes.
-	ULONG			SectorSize;		//	Sector size of this volume in bytes.
+	LARGE_INTEGER	TotalSize;		//	Total size of this volume in bytes
+	ULONG			ClusterSize;	//	Cluster size of this volume in bytes
+	ULONG			SectorSize;		//	Sector size of this volume in bytes
+	ULONG			DiskNumber;
+	ULONG			PartitionNumber;
 
 	CACHE_POOL		CachePool;
 } DISKFILTER_DEVICE_EXTENSION, *PDISKFILTER_DEVICE_EXTENSION;

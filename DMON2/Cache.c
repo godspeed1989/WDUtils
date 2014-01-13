@@ -89,6 +89,17 @@ static BOOLEAN AddOneBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 }
 
 /**
+ * Delete one Block from Cache Pool and Free it
+ */
+static VOID DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
+{
+	BOOLEAN deleted = FALSE;
+	CachePool->bpt_root = Delete(CachePool->bpt_root, Index, TRUE, &deleted);
+	if (deleted == TRUE)
+		CachePool->Used--;
+}
+
+/**
  * Query Cache Pool if the _READ_ Request is Matched
  * If it's fully matched, copy to the request buffer and return TRUE,
  * else return FALSE
@@ -145,6 +156,7 @@ static VOID FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data
 	KEY_T i, key;
 	node *leaf;
 	PCACHE_BLOCK pBlock = NULL;
+	BOOLEAN deleted;
 	leaf = Get_Leftmost_Leaf(CachePool->bpt_root);
 	while(leaf)
 	{
@@ -162,9 +174,9 @@ static VOID FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data
 	}
 	return;
 found:
-	if (pBlock != NULL)
+	CachePool->bpt_root = Delete(CachePool->bpt_root, key, FALSE, &deleted);
+	if (pBlock != NULL && deleted == TRUE)
 	{
-		CachePool->bpt_root = Delete(CachePool->bpt_root, key, FALSE);
 		pBlock->Accessed = FALSE;
 		pBlock->Modified = FALSE;
 		RtlCopyMemory (
@@ -229,11 +241,11 @@ VOID UpdataCachePool(
 	else /* Write */
 	{
 		if(front_broken)
-			CachePool->bpt_root = Delete(CachePool->bpt_root, Offset-1, TRUE);
+			DeleteOneBlockFromPool(CachePool, Offset-1);
 		for (i = 0; i < Length; i++)
 		{
 		#if 1
-			CachePool->bpt_root = Delete(CachePool->bpt_root, Offset+i, TRUE);
+			DeleteOneBlockFromPool(CachePool, Offset+i);
 		#else
 			if(QueryPoolByIndex(CachePool, Offset+i, &pBlock) == TRUE)
 			{
@@ -259,6 +271,6 @@ VOID UpdataCachePool(
 		#endif
 		}
 		if (end_broken == TRUE)
-			CachePool->bpt_root = Delete(CachePool->bpt_root, Offset+i, TRUE);
+			DeleteOneBlockFromPool(CachePool, Offset+i);
 	}
 }

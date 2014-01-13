@@ -30,7 +30,7 @@ NTSTATUS DiskFilter_DispatchPower(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	else
 		DBG_PRINT(DBG_TRACE_OPS, ("\n"));
 
-#if WINVER<_WIN32_WINNT_VISTA
+#if WINVER < _WIN32_WINNT_VISTA
 	PoStartNextPowerIrp(Irp);
 	IoSkipCurrentIrpStackLocation(Irp);
 	return PoCallDriver(DevExt->LowerDeviceObject, Irp);
@@ -87,6 +87,7 @@ NTSTATUS DiskFilter_DispatchControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 			)
 		{
 			KdPrint((": Protected\n"));
+			InitCachePool(&DevExt->CachePool);
 			DevExt->bIsProtectedVolume = TRUE;
 		}
 		Status = Irp->IoStatus.Status;
@@ -287,9 +288,11 @@ NTSTATUS DiskFilter_DispatchReadWrite(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		}
 
 		if (IrpSp->MajorFunction == IRP_MJ_READ)
-			DBG_PRINT(DBG_TRACE_RW, ("[R off(%I64d) len(%x)]\n", Offset, Length));
+			DBG_PRINT(DBG_TRACE_RW, ("%u-%u: R off(%I64d) len(%x)\n",
+				DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
 		else
-			DBG_PRINT(DBG_TRACE_RW, ("[W off(%I64d) len(%x)]\n", Offset, Length));
+			DBG_PRINT(DBG_TRACE_RW, ("%u-%u: W off(%I64d) len(%x)\n",
+				DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
 		// Read Request
 		if (IrpSp->MajorFunction == IRP_MJ_READ)
 		{
