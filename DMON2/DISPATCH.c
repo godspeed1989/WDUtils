@@ -20,6 +20,7 @@ MyCompletionRoutine(
 	PIO_COMPLETION_ROUTINE	CompletionRoutine;
 	KIRQL					oldIrql;
 	PKSPIN_LOCK				finishedProc;
+	PUCHAR					SysBuf;
 
 	MyContext = (PMYCONTEXT)Context;
 	Control = MyContext->Control;
@@ -41,6 +42,42 @@ MyCompletionRoutine(
 	{
 		if(Control & SL_INVOKE_ON_SUCCESS)
 		{
+			if (Irp->MdlAddress != NULL)
+				SysBuf = (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+			else
+				SysBuf = (PUCHAR)Irp->AssociatedIrp.SystemBuffer;
+			if (SysBuf == NULL)
+				SysBuf = (PUCHAR)Irp->UserBuffer;
+
+			if (MyContext->MajorFunction == IRP_MJ_READ)
+			{
+				DBG_PRINT(DBG_TRACE_RW, ("%u-%u: R %p %p off=%I64d, len=%u(%u)\n",
+							MyContext->DevEntry->DiskNumber, MyContext->DevEntry->PartitionNumber,
+							Irp, SysBuf,
+							MyContext->Offset/MyContext->DevEntry->SectorSize,
+							MyContext->Length/MyContext->DevEntry->SectorSize,
+							Irp->IoStatus.Information/MyContext->DevEntry->SectorSize));
+				UpdataCachePool(&MyContext->DevEntry->CachePool,
+								SysBuf,
+								MyContext->Offset,
+								MyContext->Length,
+								_READ_);
+			}
+			else if (MyContext->MajorFunction == IRP_MJ_WRITE)
+			{
+				DBG_PRINT(DBG_TRACE_RW, ("%u-%u: W %p %p off=%I64d, len=%u(%u)\n",
+							MyContext->DevEntry->DiskNumber, MyContext->DevEntry->PartitionNumber,
+							Irp, SysBuf,
+							MyContext->Offset/MyContext->DevEntry->SectorSize,
+							MyContext->Length/MyContext->DevEntry->SectorSize,
+							Irp->IoStatus.Information/MyContext->DevEntry->SectorSize));
+				UpdataCachePool(&MyContext->DevEntry->CachePool,
+								SysBuf,
+								MyContext->Offset,
+								MyContext->Length,
+								_WRITE_);
+			}
+
 			status = CompletionRoutine(DeviceObject, Irp, Context);
 		}
 	}
@@ -95,6 +132,18 @@ DefaultDispatch(
 			MyContext->startKevent = startKevent;
 			MyContext->finishedProc = finishedProc;
 
+			MyContext->DevEntry = DevEntry;
+			if (MyContext->MajorFunction == IRP_MJ_READ)
+			{
+				MyContext->Offset = IrpStack->Parameters.Read.ByteOffset.QuadPart;
+				MyContext->Length = IrpStack->Parameters.Read.Length;
+			}
+			else
+			{
+				MyContext->Offset = IrpStack->Parameters.Write.ByteOffset.QuadPart;
+				MyContext->Length = IrpStack->Parameters.Write.Length;
+			}
+
 			IrpStack->CompletionRoutine = MyCompletionRoutine;
 			IrpStack->Context = MyContext;
 			IrpStack->Control = SL_INVOKE_ON_SUCCESS | SL_INVOKE_ON_ERROR | SL_INVOKE_ON_CANCEL;
@@ -124,8 +173,6 @@ DMReadWrite(
 	)
 {
 	NTSTATUS			status;
-	KEVENT				startKevent;
-	KSPIN_LOCK			finishedProc;
 	PDEVICE_ENTRY		DevEntry;
 	PUCHAR				SysBuf;
 	ULONG				Length;
@@ -159,7 +206,6 @@ DMReadWrite(
 			goto ret;
 		}
 
-		// TODO: crash on get accurate address 
 		// Get system buffer address
 		if (Irp->MdlAddress != NULL)
 			SysBuf = (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
@@ -185,32 +231,8 @@ DMReadWrite(
 			else
 			{
 				// Read through
-				KeInitializeEvent(&startKevent, NotificationEvent, FALSE);
-				KeInitializeSpinLock(&finishedProc);
-				KeAcquireSpinLockAtDpcLevel(&finishedProc);
-				status = DefaultDispatch(DeviceObject, Irp, &startKevent, &finishedProc);
-				// Wait for Pending
-				if (status == STATUS_PENDING)
-				{
-					KeWaitForSingleObject( &startKevent, Executive,
-											KernelMode, FALSE,
-											NULL /*indefinite wait*/ );
-				}
-				// Update Pool
-				if (NT_SUCCESS(Irp->IoStatus.Status))
-				{
-					DBG_PRINT(DBG_TRACE_RW, ("%u-%u: R %p %p off=%I64d, len=%u(%u)\n",
-								DevEntry->DiskNumber, DevEntry->PartitionNumber,
-								Irp, SysBuf, Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize,
-								Irp->IoStatus.Information/DevEntry->SectorSize));
-					UpdataCachePool(&DevEntry->CachePool,
-									SysBuf,
-									Offset,
-									Length,
-									_READ_);
-				}
-				// Process finished
-				KeReleaseSpinLockFromDpcLevel(&finishedProc);
+				status = DefaultDispatch(DeviceObject, Irp, NULL, NULL);
+				// Update Pool in Completion Routine
 			}
 		}
 		// Write
@@ -218,32 +240,8 @@ DMReadWrite(
 		{
 			InterlockedIncrement(&DevEntry->WriteCount);
 			// Write through
-			KeInitializeEvent(&startKevent, NotificationEvent, FALSE);
-			KeInitializeSpinLock(&finishedProc);
-			KeAcquireSpinLockAtDpcLevel(&finishedProc);
-			status = DefaultDispatch(DeviceObject, Irp, &startKevent, &finishedProc);
-			// Wait for Pending
-			if (status == STATUS_PENDING)
-			{
-				KeWaitForSingleObject( &startKevent, Executive,
-										KernelMode, FALSE,
-										NULL /*indefinite wait*/ );
-			}
-			// Update Pool
-			if (NT_SUCCESS(Irp->IoStatus.Status))
-			{
-				DBG_PRINT(DBG_TRACE_RW, ("%u-%u: W %p %p off=%I64d, len=%u(%u)\n",
-							DevEntry->DiskNumber, DevEntry->PartitionNumber,
-							Irp, SysBuf, Offset/DevEntry->SectorSize, Length/DevEntry->SectorSize,
-							Irp->IoStatus.Information/DevEntry->SectorSize));
-				UpdataCachePool(&DevEntry->CachePool,
-								SysBuf,
-								Offset,
-								Length,
-								_WRITE_);
-			}
-			// Process finished
-			KeReleaseSpinLockFromDpcLevel(&finishedProc);
+			status = DefaultDispatch(DeviceObject, Irp, NULL, NULL);
+			// Update Pool in Completion Routine
 		}
 	}
 	else

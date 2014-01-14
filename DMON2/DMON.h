@@ -39,6 +39,10 @@ typedef struct _MYCONTEXT
 	ULONG			MajorFunction;
 	PKEVENT			startKevent;
 	PKSPIN_LOCK		finishedProc;
+	// For Read/Write Operation
+	PDEVICE_ENTRY	DevEntry;
+	LONGLONG		Offset;
+	ULONG			Length;
 }MYCONTEXT, *PMYCONTEXT;
 
 #ifdef ExAllocatePool
