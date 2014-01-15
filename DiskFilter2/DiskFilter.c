@@ -1,39 +1,45 @@
 #include "DiskFilter.h"
 
 ULONG				g_TraceFlags;
+PDEVICE_OBJECT		g_pDeviceObject;
 
-NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject,
-					 PUNICODE_STRING RegistryPath
-					 )
+NTSTATUS CreateControlDevice(PDRIVER_OBJECT pDriverObject);
+
+NTSTATUS
+DriverEntry(PDRIVER_OBJECT DriverObject,
+			PUNICODE_STRING RegistryPath)
 {
-	ULONG i;
-	NTSTATUS Status;
-	PDISKFILTER_DRIVER_EXTENSION DrvExt = NULL;
-	ULONG ClientId;
+	ULONG					i, ClientId;
+	NTSTATUS				Status;
+	PDF_DRIVER_EXTENSION	DrvExt;
 
 	g_TraceFlags = DBG_TRACE_ROUTINES | DBG_TRACE_OPS | DBG_TRACE_RW;
 	for (i = 0; i<=IRP_MJ_MAXIMUM_FUNCTION; ++i)
 	{
-		DriverObject->MajorFunction[i] = DiskFilter_DispatchDefault;
+		DriverObject->MajorFunction[i] = DF_DispatchDefault;
 	}
 
-	DriverObject->MajorFunction[IRP_MJ_READ] = DiskFilter_DispatchReadWrite;
-	DriverObject->MajorFunction[IRP_MJ_WRITE] = DiskFilter_DispatchReadWrite;
-	DriverObject->MajorFunction[IRP_MJ_POWER] = DiskFilter_DispatchPower;
-	DriverObject->MajorFunction[IRP_MJ_PNP] = DiskFilter_DispatchPnp;
-	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = DiskFilter_DispatchControl;
+	DriverObject->MajorFunction[IRP_MJ_READ] = DF_DispatchReadWrite;
+	DriverObject->MajorFunction[IRP_MJ_WRITE] = DF_DispatchReadWrite;
+	DriverObject->MajorFunction[IRP_MJ_POWER] = DF_DispatchPower;
+	DriverObject->MajorFunction[IRP_MJ_PNP] = DF_DispatchPnp;
+	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = DF_DispatchIoctl;
 
-	DriverObject->DriverExtension->AddDevice = DiskFilter_AddDevice;
+	DriverObject->MajorFunction[IRP_MJ_CREATE] = DF_DispatchDevCtl;
+	DriverObject->MajorFunction[IRP_MJ_CLOSE] = DF_DispatchDevCtl;
+	DriverObject->MajorFunction[IRP_MJ_CLEANUP] = DF_DispatchDevCtl;
+
+	DriverObject->DriverExtension->AddDevice = DF_AddDevice;
 
 	//
 	//	Copy serivce key to driver extension.
 	//
-	ClientId = DISKFILTER_DRIVER_EXTENSION_ID;
+	ClientId = DF_DRIVER_EXTENSION_ID;
 	Status = IoAllocateDriverObjectExtension(DriverObject, (PVOID)ClientId,
-		sizeof(DISKFILTER_DRIVER_EXTENSION), (PVOID*)&DrvExt);
+		sizeof(DF_DRIVER_EXTENSION), (PVOID*)&DrvExt);
 	ASSERT(NT_SUCCESS(Status));
 
-	ClientId = DISKFILTER_DRIVER_EXTENSION_ID_UNICODE_BUFFER;
+	ClientId = DF_DRIVER_EXTENSION_ID_UNICODE_BUFFER;
 	Status = IoAllocateDriverObjectExtension(DriverObject, (PVOID)ClientId,
 		RegistryPath->Length + 1, (PVOID*)&DrvExt->RegistryUnicodeBuffer);
 	ASSERT(NT_SUCCESS(Status));
@@ -42,18 +48,16 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject,
 	DrvExt->ServiceKeyName.MaximumLength = RegistryPath->Length + 1;
 	RtlCopyUnicodeString(&DrvExt->ServiceKeyName, RegistryPath);
 
-	DiskFilter_QueryConfig(DrvExt->ProtectedVolumes, DrvExt->CacheVolumes, RegistryPath);
+	DF_QueryConfig(DrvExt->ProtectedVolumes, DrvExt->CacheVolumes, RegistryPath);
 
-	IoRegisterBootDriverReinitialization(DriverObject, DiskFilter_DriverReinitializeRoutine, NULL);
+	IoRegisterBootDriverReinitialization(DriverObject, DF_DriverReinitializeRoutine, NULL);
 
 	KdPrint(("Service key :\n%wZ\n", &DrvExt->ServiceKeyName));
-	return STATUS_SUCCESS;
+	return CreateControlDevice(DriverObject);
 }
 
-NTSTATUS DiskFilter_QueryConfig( PWCHAR ProtectedVolume,
-								 PWCHAR CacheVolume,
-								 PUNICODE_STRING RegistryPath
-								)
+NTSTATUS
+DF_QueryConfig(PWCHAR ProtectedVolume, PWCHAR CacheVolume, PUNICODE_STRING RegistryPath)
 {
 	NTSTATUS Status;
 	ULONG i;
@@ -130,23 +134,20 @@ NTSTATUS DiskFilter_QueryConfig( PWCHAR ProtectedVolume,
 	return STATUS_SUCCESS;
 }
 
-VOID DiskFilter_DriverReinitializeRoutine (
-	 PDRIVER_OBJECT DriverObject,
-	 PVOID Context,
-	 ULONG Count
-	)
+VOID
+DF_DriverReinitializeRoutine(PDRIVER_OBJECT DriverObject, PVOID Context, ULONG Count)
 {
-	PDEVICE_OBJECT DeviceObject = DriverObject->DeviceObject;
-	PDISKFILTER_DEVICE_EXTENSION DevExt;
+	PDEVICE_OBJECT 			DeviceObject;
+	PDF_DEVICE_EXTENSION	DevExt;
 
 	UNREFERENCED_PARAMETER(Context);
 	UNREFERENCED_PARAMETER(Count);
 	DBG_PRINT(DBG_TRACE_ROUTINES, ("Start Reinitialize...\n"));
 
-	//	Enumerate device.
-	for(; DeviceObject; DeviceObject = DeviceObject->NextDevice)
+	DeviceObject = DriverObject->DeviceObject;
+	while (DeviceObject != NULL)
 	{
-		DevExt = (PDISKFILTER_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+		DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 		KdPrint((" -> [%wZ]", &DevExt->VolumeDosName));
 		if (DevExt->bIsProtectedVolume)
 		{
@@ -156,23 +157,23 @@ VOID DiskFilter_DriverReinitializeRoutine (
 		{
 			KdPrint(("\n"));
 		}
+		DeviceObject = DeviceObject->NextDevice;
 	}
 }
 
-NTSTATUS DiskFilter_AddDevice(PDRIVER_OBJECT DriverObject,
-							  PDEVICE_OBJECT PhysicalDeviceObject
-							  )
+NTSTATUS
+DF_AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject)
 {
-	NTSTATUS Status;
-	PDISKFILTER_DEVICE_EXTENSION DevExt;
-	PDEVICE_OBJECT DeviceObject = NULL;
-	PDEVICE_OBJECT LowerDeviceObject = NULL;
+	NTSTATUS				Status;
+	PDF_DEVICE_EXTENSION	DevExt;
+	PDEVICE_OBJECT			DeviceObject;
+	PDEVICE_OBJECT			LowerDeviceObject;
 	PAGED_CODE();
-	DBG_PRINT(DBG_TRACE_ROUTINES, ("DiskFilter_AddDevice: Enter\n"));
 
-	// Create a device
+	DBG_PRINT(DBG_TRACE_ROUTINES, ("DF_AddDevice: Enter\n"));
+
 	Status = IoCreateDevice(DriverObject,
-							sizeof(DISKFILTER_DEVICE_EXTENSION),
+							sizeof(DF_DEVICE_EXTENSION),
 							NULL,
 							PhysicalDeviceObject->DeviceType,
 							FILE_DEVICE_SECURE_OPEN,
@@ -185,7 +186,7 @@ NTSTATUS DiskFilter_AddDevice(PDRIVER_OBJECT DriverObject,
 		goto l_error;
 	}
 
-	DevExt = (PDISKFILTER_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+	DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 	DevExt->bIsProtectedVolume = FALSE;
 	DevExt->PhysicalDeviceObject = PhysicalDeviceObject;
 
@@ -214,4 +215,41 @@ l_error:
 		IoDeleteDevice(DeviceObject);
 	}
 	return STATUS_UNSUCCESSFUL;
+}
+
+static NTSTATUS
+CreateControlDevice(PDRIVER_OBJECT pDriverObject)
+{
+	NTSTATUS				status;
+	PDF_DEVICE_EXTENSION	pDevExt;
+	UNICODE_STRING			DevName;
+	UNICODE_STRING			SymLinkName;
+
+	RtlInitUnicodeString(&DevName, L"\\Device\\Diskfilter");
+	status = IoCreateDevice(pDriverObject,
+							sizeof(DF_DEVICE_EXTENSION),//0?
+							&DevName,
+							FILE_DEVICE_UNKNOWN,
+							0, TRUE,
+							&g_pDeviceObject);
+	if(NT_SUCCESS(status))
+	{
+		DbgPrint("Message Device Create success\n");
+	}
+	else
+	{
+		DbgPrint("Message Device Create fail\n");
+		return status;
+	}
+
+	g_pDeviceObject->Flags |= DO_BUFFERED_IO;
+
+	RtlInitUnicodeString(&SymLinkName, L"\\DosDevices\\Diskfilter");
+	status = IoCreateSymbolicLink(&SymLinkName, &DevName);
+	if (!NT_SUCCESS(status))
+	{
+		IoDeleteDevice(g_pDeviceObject);
+		return status;
+	}
+	return STATUS_SUCCESS;
 }

@@ -7,7 +7,7 @@ extern "C"
 {
 #endif
 
-IO_COMPLETION_ROUTINE DiskFilter_QueryVolumeCompletion;
+IO_COMPLETION_ROUTINE DF_QueryVolumeCompletion;
 
 #ifdef __cplusplus
 }
@@ -29,8 +29,7 @@ NTSTATUS IoDoRequestAsync (
 		PLARGE_INTEGER	StartingOffset
 	);
 
-NTSTATUS
-	DiskFilter_QueryVolumeInfo (
+NTSTATUS DF_QueryVolumeInfo (
 		PDEVICE_OBJECT DeviceObject
 	);
 

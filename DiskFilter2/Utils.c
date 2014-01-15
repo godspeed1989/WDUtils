@@ -10,7 +10,8 @@ NTSTATUS QueryVolumeCompletion (PDEVICE_OBJECT DeviceObject,
 	UNREFERENCED_PARAMETER(DeviceObject);
 
 	KeSetEvent((PKEVENT)Context, (KPRIORITY)0, FALSE);
-	if(Irp->AssociatedIrp.SystemBuffer && (Irp->Flags & IRP_DEALLOCATE_BUFFER) ) {
+	if(Irp->AssociatedIrp.SystemBuffer && (Irp->Flags & IRP_DEALLOCATE_BUFFER) )
+	{
             ExFreePool(Irp->AssociatedIrp.SystemBuffer);
     }
 	else if (Irp->MdlAddress != NULL) {
@@ -98,33 +99,33 @@ NTSTATUS IoDoRequestSync (
 	return Status;
 }
 
-NTSTATUS DiskFilter_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
+NTSTATUS DF_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 {
 #define FAT16_SIG_OFFSET	54
 #define FAT32_SIG_OFFSET	82
 #define NTFS_SIG_OFFSET		3
-
 #define DBR_LENGTH			512
 	//	File system signature
 	const UCHAR FAT16FLG[4] = {'F','A','T','1'};
 	const UCHAR FAT32FLG[4] = {'F','A','T','3'};
 	const UCHAR NTFSFLG[4] = {'N','T','F','S'};
-	NTSTATUS Status = STATUS_SUCCESS;
-	UCHAR DBR[DBR_LENGTH] = {0};
+	NTSTATUS				Status = STATUS_SUCCESS;
+	UCHAR					DBR[DBR_LENGTH] = {0};
 
 	PDP_NTFS_BOOT_SECTOR pNtfsBootSector = (PDP_NTFS_BOOT_SECTOR)DBR;
 	PDP_FAT32_BOOT_SECTOR pFat32BootSector = (PDP_FAT32_BOOT_SECTOR)DBR;
 	PDP_FAT16_BOOT_SECTOR pFat16BootSector = (PDP_FAT16_BOOT_SECTOR)DBR;
-
 	LARGE_INTEGER readOffset = { 0 };	//	Read IRP offsets.
-	IO_STATUS_BLOCK ios;
-	PIRP   Irp	= NULL;
-	KEVENT Event;
-	PARTITION_INFORMATION PartitionInfo;
-	VOLUME_DISK_EXTENTS VolumeDiskExt;
-	PDISKFILTER_DEVICE_EXTENSION DevExt = (PDISKFILTER_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
-	KdPrint((": DiskFilter_QueryVolumeInfo: Enter\n"));
+	PIRP					Irp;
+	KEVENT					Event;
+	IO_STATUS_BLOCK			ios;
+	PARTITION_INFORMATION	PartitionInfo;
+	VOLUME_DISK_EXTENTS		VolumeDiskExt;
+	PDF_DEVICE_EXTENSION	DevExt;
+	DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+
+	KdPrint((": DF_QueryVolumeInfo: Enter\n"));
 	// Build IRP to get Partition Length
 	KeInitializeEvent(&Event, NotificationEvent, FALSE);
 	Irp = IoBuildDeviceIoControlRequest(

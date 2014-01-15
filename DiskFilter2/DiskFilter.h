@@ -9,41 +9,44 @@ extern "C"
 
 DRIVER_INITIALIZE		DriverEntry;
 
-DRIVER_ADD_DEVICE		DiskFilter_AddDevice;
+DRIVER_ADD_DEVICE		DF_AddDevice;
 
-DRIVER_UNLOAD			DiskFilter_DriverUnload;
+DRIVER_UNLOAD			DF_DriverUnload;
 
-DRIVER_REINITIALIZE		DiskFilter_DriverReinitializeRoutine;
+DRIVER_REINITIALIZE		DF_DriverReinitializeRoutine;
 
-DRIVER_DISPATCH			DiskFilter_DispatchDefault;
+DRIVER_DISPATCH			DF_DispatchDefault;
 
-DRIVER_DISPATCH			DiskFilter_DispatchReadWrite;
+DRIVER_DISPATCH			DF_DispatchReadWrite;
 
-DRIVER_DISPATCH			DiskFilter_DispatchPnp;
+DRIVER_DISPATCH			DF_DispatchPnp;
 
-DRIVER_DISPATCH			DiskFilter_DispatchPower;
+DRIVER_DISPATCH			DF_DispatchPower;
 
-DRIVER_DISPATCH			DiskFilter_DispatchControl;
+DRIVER_DISPATCH			DF_DispatchIoctl;
+
+DRIVER_DISPATCH			DF_DispatchDevCtl;
 
 #ifdef __cplusplus
 }
 #endif
 
 NTSTATUS
-	DiskFilter_QueryConfig (
+	DF_QueryConfig (
 		PWCHAR ProtectedVolume,
 		PWCHAR CacheVolume,
 		PUNICODE_STRING RegistryPath
 	);
 
 #pragma alloc_text("INIT",  DriverEntry)
-#pragma alloc_text("PAGED", DiskFilter_AddDevice)
-#pragma alloc_text("PAGED", DiskFilter_DriverUnload)
-#pragma alloc_text("PAGED", DiskFilter_DispatchDefault)
-#pragma alloc_text("PAGED", DiskFilter_DispatchReadWrite)
-#pragma alloc_text("PAGED", DiskFilter_DispatchPnp)
-#pragma alloc_text("PAGED", DiskFilter_DispatchPower)
-#pragma alloc_text("PAGED", DiskFilter_DispatchControl)
+#pragma alloc_text("PAGED", DF_AddDevice)
+#pragma alloc_text("PAGED", DF_DriverUnload)
+#pragma alloc_text("PAGED", DF_DispatchDefault)
+#pragma alloc_text("PAGED", DF_DispatchReadWrite)
+#pragma alloc_text("PAGED", DF_DispatchPnp)
+#pragma alloc_text("PAGED", DF_DispatchPower)
+#pragma alloc_text("PAGED", DF_DispatchIoctl)
+#pragma alloc_text("PAGED", DF_DispatchDevCtl)
 
 #define DBG_TRACE_ROUTINES				0x00000001
 #define DBG_TRACE_OPS					0x00000002
@@ -52,3 +55,4 @@ NTSTATUS
 	( FlagOn(g_TraceFlags,(_dbgLevel) ) ? DbgPrint _string : ((void)0) )
 
 extern	ULONG				g_TraceFlags;
+extern	PDEVICE_OBJECT		g_pDeviceObject;
