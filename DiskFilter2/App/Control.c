@@ -1,7 +1,7 @@
 #include <windows.h>
 #include <winioctl.h>
 #include <stdio.h>
-#include "DiskFilterIoctl.h"
+#include "../DiskFilterIoctl.h"
 
 HANDLE m_hCommDevice;
 
@@ -41,6 +41,16 @@ int main(int argc, char *argv[])
 		DeviceIoControl (
 			m_hCommDevice, 
 			IOCTL_DF_TEST, 
+			NULL,
+			0, 
+			NULL, 
+			0,
+			&dwOutBytes,
+			NULL
+		);
+		DeviceIoControl (
+			m_hCommDevice, 
+			IOCTL_DF_QUERY_DISK_INFO, 
 			NULL,
 			0, 
 			NULL, 

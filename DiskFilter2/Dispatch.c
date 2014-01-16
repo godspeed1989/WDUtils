@@ -89,6 +89,7 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	ULONG					InputLength;
 	PVOID					OutputBuffer;
 	ULONG					OutputLength;
+	PDRIVER_OBJECT			DriverObject;
 	PDF_DEVICE_EXTENSION	DevExt;
 	PIO_STACK_LOCATION		IrpSp;
 	PAGED_CODE();
@@ -102,11 +103,27 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		InputLength = IrpSp->Parameters.DeviceIoControl.InputBufferLength;
 		OutputBuffer = Irp->AssociatedIrp.SystemBuffer;
 		OutputLength = IrpSp->Parameters.DeviceIoControl.OutputBufferLength;
+		DriverObject = DeviceObject->DriverObject;
 
 		switch (IrpSp->Parameters.DeviceIoControl.IoControlCode)
 		{
 		case IOCTL_DF_TEST:
 			KdPrint(("DF_DispatchIoctl: Test Ioctl\n"));
+			Irp->IoStatus.Status = STATUS_SUCCESS;
+			Irp->IoStatus.Information = 0;
+			IoCompleteRequest(Irp, IO_NO_INCREMENT);
+			return Irp->IoStatus.Status;
+		case IOCTL_DF_QUERY_DISK_INFO:
+			KdPrint(("DF_DispatchIoctl: Query disk layout\n"));
+			DeviceObject = DriverObject->DeviceObject;
+			while (DeviceObject != NULL)
+			{
+				DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+				if (DeviceObject != g_pDeviceObject)
+					DF_QueryVolumeInfo(DeviceObject);
+				DeviceObject = DeviceObject->NextDevice;
+			}
+			
 			Irp->IoStatus.Status = STATUS_SUCCESS;
 			Irp->IoStatus.Information = 0;
 			IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -127,13 +144,13 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 			DBG_PRINT(DBG_TRACE_OPS, ("DF_DispatchIoctl: IOCTL_VOLUME_ONLINE\n"));
 			if (IoForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp) &&
 				NT_SUCCESS(Irp->IoStatus.Status) &&
-				IsProtectedVolume(DeviceObject) &&
+				//IsProtectedVolume(DeviceObject) &&
 				NT_SUCCESS(DF_QueryVolumeInfo(DeviceObject))
 				)
 			{
 				KdPrint((": Protected\n"));
 				InitCachePool(&DevExt->CachePool);
-				DevExt->bIsProtectedVolume = TRUE;
+				//DevExt->bIsProtectedVolume = TRUE;
 			}
 			Status = Irp->IoStatus.Status;
 			IoCompleteRequest(Irp, IO_NO_INCREMENT);

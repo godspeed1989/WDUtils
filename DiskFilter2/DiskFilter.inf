@@ -9,8 +9,8 @@
 
 [Version]
 Signature = "$Windows NT$"
-Class = Volume
-ClassGuid = {71a27cdd-812a-11d0-bec7-08002be2092f}
+Class = Disk
+ClassGuid = {4D36E967-E325-11CE-BFC1-08002BE10318}
 DriverVer = 02/04/2013, 1.0.0.1
 CatalogFile = DiskFilter.cat
 Provider = %Provider%
@@ -50,7 +50,7 @@ AddReg = DiskFilter_AddReg
 ;
 ; Change UpperFilters to LowerFilters if this is a lower class filter.
 ;
-HKLM, System\CurrentControlSet\Control\Class\{71a27cdd-812a-11d0-bec7-08002be2092f}, UpperFilters, 0x00010008, DiskFilter
+HKLM, System\CurrentControlSet\Control\Class\{4D36E967-E325-11CE-BFC1-08002BE10318}, LowerFilters, 0x00010008, DiskFilter
 
 
 [DefaultInstall.NT.Services]

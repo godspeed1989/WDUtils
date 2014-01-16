@@ -1,5 +1,5 @@
 #include "Utils.h"
-#include <Ntdddisk.h>
+#include "DiskFilter.h"
 
 IO_COMPLETION_ROUTINE QueryVolumeCompletion;
 NTSTATUS QueryVolumeCompletion (PDEVICE_OBJECT DeviceObject,
@@ -99,137 +99,136 @@ NTSTATUS IoDoRequestSync (
 	return Status;
 }
 
+NTSTATUS IoDoIoctl (
+		ULONG			IoControlCode,
+		PDEVICE_OBJECT	DeviceObject,
+		PVOID			InputBuffer,
+		ULONG			InputBufferLength,
+		PVOID			OutputBuffer,
+		ULONG			OutputBufferLength
+	)
+{
+	PIRP				Irp;
+	KEVENT				Event;
+	IO_STATUS_BLOCK		ios;
+
+	KeInitializeEvent(&Event, NotificationEvent, FALSE);
+	Irp = IoBuildDeviceIoControlRequest (
+		IoControlCode,
+		DeviceObject,
+		InputBuffer,
+		InputBufferLength,
+		OutputBuffer,
+		OutputBufferLength,
+		FALSE,
+		&Event,
+		&ios
+	);
+	if (NULL == Irp)
+	{
+		KdPrint(("Build IOCTL IRP failed!\n"));
+		return STATUS_UNSUCCESSFUL;
+	}
+	if (IoCallDriver(DeviceObject, Irp) == STATUS_PENDING)
+	{
+		KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+		if (!NT_SUCCESS(Irp->IoStatus.Status))
+		{
+			KdPrint(("Forward IOCTL IRP failed!\n"));
+			return STATUS_UNSUCCESSFUL;
+		}
+	}
+	return STATUS_SUCCESS;
+}
+
 NTSTATUS DF_QueryVolumeInfo(PDEVICE_OBJECT DeviceObject)
 {
-#define FAT16_SIG_OFFSET	54
-#define FAT32_SIG_OFFSET	82
-#define NTFS_SIG_OFFSET		3
-#define DBR_LENGTH			512
-	//	File system signature
-	const UCHAR FAT16FLG[4] = {'F','A','T','1'};
-	const UCHAR FAT32FLG[4] = {'F','A','T','3'};
-	const UCHAR NTFSFLG[4] = {'N','T','F','S'};
-	NTSTATUS				Status = STATUS_SUCCESS;
-	UCHAR					DBR[DBR_LENGTH] = {0};
+	ULONG						i, nDiskBufferSize;
+	NTSTATUS					Status = STATUS_SUCCESS;
 
-	PDP_NTFS_BOOT_SECTOR pNtfsBootSector = (PDP_NTFS_BOOT_SECTOR)DBR;
-	PDP_FAT32_BOOT_SECTOR pFat32BootSector = (PDP_FAT32_BOOT_SECTOR)DBR;
-	PDP_FAT16_BOOT_SECTOR pFat16BootSector = (PDP_FAT16_BOOT_SECTOR)DBR;
-	LARGE_INTEGER readOffset = { 0 };	//	Read IRP offsets.
-
-	PIRP					Irp;
-	KEVENT					Event;
-	IO_STATUS_BLOCK			ios;
-	PARTITION_INFORMATION	PartitionInfo;
-	VOLUME_DISK_EXTENTS		VolumeDiskExt;
-	PDF_DEVICE_EXTENSION	DevExt;
+	DISK_GEOMETRY				DiskGeo;
+	GET_LENGTH_INFORMATION		LengthInfo;
+	STORAGE_DEVICE_NUMBER		DeviceNumber;
+	PDF_DEVICE_EXTENSION		DevExt;
 	DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
-	KdPrint((": DF_QueryVolumeInfo: Enter\n"));
-	// Build IRP to get Partition Length
-	KeInitializeEvent(&Event, NotificationEvent, FALSE);
-	Irp = IoBuildDeviceIoControlRequest(
-		IOCTL_DISK_GET_PARTITION_INFO,
+	KdPrint((": DF_QueryDiskInfo: %p Enter\n", DeviceObject));
+
+	// Get Disk Layout Information
+	nDiskBufferSize = sizeof(DRIVE_LAYOUT_INFORMATION) + sizeof(PARTITION_INFORMATION) * MAX_PARTITIONS_PER_DISK;
+	DevExt->DiskLayout = (PDRIVE_LAYOUT_INFORMATION) DF_MALLOC (nDiskBufferSize);
+	ASSERT(DevExt->DiskLayout != NULL);
+	Status = IoDoIoctl (
+		IOCTL_DISK_GET_DRIVE_LAYOUT,
 		DevExt->PhysicalDeviceObject,
 		NULL,
 		0,
-		&PartitionInfo,
-		sizeof(PARTITION_INFORMATION),
-		FALSE,
-		&Event,
-		&ios
-	);
-	if (NULL == Irp)
-	{
-		KdPrint(("Build IOCTL IRP failed1!\n"));
-		Status = STATUS_UNSUCCESSFUL;
-		return Status;
-	}
-	if (IoCallDriver(DevExt->PhysicalDeviceObject, Irp) == STATUS_PENDING)
-	{
-		KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-		if (!NT_SUCCESS(Irp->IoStatus.Status))
-		{
-			KdPrint(("Forward IOCTL IRP failed1!\n"));
-			Status = STATUS_UNSUCCESSFUL;
-			goto ERROUT;
-		}
-	}
-	DevExt->TotalSize = PartitionInfo.PartitionLength;
-	DevExt->PartitionNumber = PartitionInfo.PartitionNumber;
-
-	// Build IRP to get Disk Number
-	KeInitializeEvent(&Event, NotificationEvent, FALSE);
-	Irp = IoBuildDeviceIoControlRequest(
-		IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS,
-		DevExt->PhysicalDeviceObject,
-		NULL,
-		0,
-		&VolumeDiskExt,
-		sizeof(VOLUME_DISK_EXTENTS),
-		FALSE,
-		&Event,
-		&ios
-	);
-	if (NULL == Irp)
-	{
-		KdPrint(("Build IOCTL IRP failed2!\n"));
-		Status = STATUS_UNSUCCESSFUL;
-		return Status;
-	}
-	if (IoCallDriver(DevExt->PhysicalDeviceObject, Irp) == STATUS_PENDING)
-	{
-		KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-		if (!NT_SUCCESS(Irp->IoStatus.Status))
-		{
-			KdPrint(("Forward IOCTL IRP failed2!\n"));
-			Status = STATUS_UNSUCCESSFUL;
-			goto ERROUT;
-		}
-	}
-	DevExt->DiskNumber = VolumeDiskExt.Extents[0].DiskNumber;
-
-	// Read DBR
-	Status = IoDoRequestSync (
-		IRP_MJ_READ,
-		DevExt->PhysicalDeviceObject,
-		DBR,
-		DBR_LENGTH,
-		&readOffset
+		DevExt->DiskLayout,
+		nDiskBufferSize
 	);
 	if (!NT_SUCCESS(Status))
 	{
-		DbgPrint("Forward IRP failed!\n");
+		KdPrint(("Get Disk Layout failed!\n"));
 		goto ERROUT;
 	}
-	// Distinguish the file system.
-	if (*(ULONG32*)NTFSFLG == *(ULONG32*)&DBR[NTFS_SIG_OFFSET])
-	{
-		KdPrint((": Current file system is NTFS\n"));
-		DevExt->SectorSize = pNtfsBootSector->BytesPerSector;
-		DevExt->ClusterSize = DevExt->SectorSize * pNtfsBootSector->SectorsPerCluster;
-	}
-	else if (*(ULONG32*)FAT32FLG == *(ULONG32*)&DBR[FAT32_SIG_OFFSET])
-	{
-		KdPrint((": Current file system is FAT32\n"));
-		DevExt->SectorSize = pFat32BootSector->BytesPerSector;
-		DevExt->ClusterSize = DevExt->SectorSize * pFat32BootSector->SectorsPerCluster;
-	}
-	else if (*(ULONG32*)FAT16FLG == *(ULONG32*)&DBR[FAT16_SIG_OFFSET])
-	{
-		KdPrint((": Current file system is FAT16\n"));
-		DevExt->SectorSize = pFat16BootSector->BytesPerSector;
-		DevExt->ClusterSize = DevExt->SectorSize * pFat16BootSector->SectorsPerCluster;
-	}
-	else
-	{
-		KdPrint(("file system can't be recongnized\n"));
-	}
 
-	KdPrint((": %u-%u Sector = %d, Cluster = %d, Total = %I64d\n",
-				DevExt->DiskNumber, DevExt->PartitionNumber,
-				DevExt->SectorSize, DevExt->ClusterSize, DevExt->TotalSize));
+	// Get Disk Geometry Information
+	Status = IoDoIoctl (
+		IOCTL_DISK_GET_DRIVE_GEOMETRY,
+		DevExt->PhysicalDeviceObject,
+		NULL,
+		0,
+		&DiskGeo,
+		sizeof(DISK_GEOMETRY)
+	);
+	if (!NT_SUCCESS(Status))
+	{
+		KdPrint(("Get Disk Length failed!\n"));
+		goto ERROUT;
+	}
+	DevExt->SectorSize = DiskGeo.BytesPerSector;
 
+	// Get Disk Length Information
+	Status = IoDoIoctl (
+		IOCTL_DISK_GET_LENGTH_INFO,
+		DevExt->PhysicalDeviceObject,
+		NULL,
+		0,
+		&LengthInfo,
+		sizeof(GET_LENGTH_INFORMATION)
+	);
+	if (!NT_SUCCESS(Status))
+	{
+		KdPrint(("Get Disk Length failed!\n"));
+		goto ERROUT;
+	}
+	DevExt->TotalSize = LengthInfo.Length;
+
+	// Get Disk Number
+	Status = IoDoIoctl (
+		IOCTL_STORAGE_GET_DEVICE_NUMBER,
+		DevExt->PhysicalDeviceObject,
+		NULL,
+		0,
+		&DeviceNumber,
+		sizeof(STORAGE_DEVICE_NUMBER)
+	);
+	if (!NT_SUCCESS(Status))
+	{
+		KdPrint(("Get Disk Number failed!\n"));
+		goto ERROUT;
+	}
+	DevExt->DiskNumber = DeviceNumber.DeviceNumber;
+
+	KdPrint((": disk%u Sector = %u, Total = %I64d\n",
+			DevExt->DiskNumber, DevExt->SectorSize, DevExt->TotalSize));
+	for (i = 0; i < DevExt->DiskLayout->PartitionCount; i++)
+	{
+		KdPrint((": disk%u\\partition%u off=%I64d len=%I64d\n",
+				DevExt->DiskNumber, i,
+				DevExt->DiskLayout->PartitionEntry[i].StartingOffset,
+				DevExt->DiskLayout->PartitionEntry[i].PartitionLength));
+	}
 ERROUT:
 	return Status;
 }

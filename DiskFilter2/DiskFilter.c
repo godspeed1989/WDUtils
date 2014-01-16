@@ -1,10 +1,11 @@
+#include "Utils.h"
 #include "DiskFilter.h"
 
 ULONG				g_TraceFlags;
 PDEVICE_OBJECT		g_pDeviceObject;
 
 NTSTATUS CreateControlDevice(PDRIVER_OBJECT pDriverObject);
-
+//{4D36E967-E325-11CE-BFC1-08002BE10318}
 NTSTATUS
 DriverEntry(PDRIVER_OBJECT DriverObject,
 			PUNICODE_STRING RegistryPath)
@@ -148,6 +149,9 @@ DF_DriverReinitializeRoutine(PDRIVER_OBJECT DriverObject, PVOID Context, ULONG C
 	while (DeviceObject != NULL)
 	{
 		DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+		if (DeviceObject != g_pDeviceObject)
+			DF_QueryVolumeInfo(DeviceObject);
+		/*
 		KdPrint((" -> [%wZ]", &DevExt->VolumeDosName));
 		if (DevExt->bIsProtectedVolume)
 		{
@@ -156,7 +160,7 @@ DF_DriverReinitializeRoutine(PDRIVER_OBJECT DriverObject, PVOID Context, ULONG C
 		else
 		{
 			KdPrint(("\n"));
-		}
+		}*/
 		DeviceObject = DeviceObject->NextDevice;
 	}
 }
@@ -189,6 +193,7 @@ DF_AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject)
 	DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 	DevExt->bIsProtectedVolume = FALSE;
 	DevExt->PhysicalDeviceObject = PhysicalDeviceObject;
+	KeInitializeEvent(&DevExt->PagingCountEvent, NotificationEvent, TRUE);
 
 	LowerDeviceObject = IoAttachDeviceToDeviceStack(DeviceObject, PhysicalDeviceObject);
 	if (LowerDeviceObject == NULL)
@@ -196,10 +201,7 @@ DF_AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject)
 		KdPrint(("Attach device failed...\n"));
 		goto l_error;
 	}
-
-	// Set device extension
 	DevExt->LowerDeviceObject = LowerDeviceObject;
-	KeInitializeEvent(&DevExt->PagingCountEvent, NotificationEvent, TRUE);
 
 	DeviceObject->Flags = (LowerDeviceObject->Flags & (DO_DIRECT_IO | DO_BUFFERED_IO))| DO_POWER_PAGABLE;
 	DeviceObject->Characteristics = LowerDeviceObject->Characteristics;

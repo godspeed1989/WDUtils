@@ -29,6 +29,15 @@ NTSTATUS IoDoRequestAsync (
 		PLARGE_INTEGER	StartingOffset
 	);
 
+NTSTATUS IoDoIoctl (
+		ULONG			IoControlCode,
+		PDEVICE_OBJECT	DeviceObject,
+		PVOID			InputBuffer,
+		ULONG			InputBufferLength,
+		PVOID			OutputBuffer,
+		IN ULONG		OutputBufferLength
+	);
+
 NTSTATUS DF_QueryVolumeInfo (
 		PDEVICE_OBJECT DeviceObject
 	);

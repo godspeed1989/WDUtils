@@ -54,5 +54,12 @@ NTSTATUS
 #define DBG_PRINT( _dbgLevel, _string ) \
 	( FlagOn(g_TraceFlags,(_dbgLevel) ) ? DbgPrint _string : ((void)0) )
 
+#define DF_POOL_TAG					'dftD'
+#define DF_FREE(p)					ExFreePoolWithTag(p,DF_POOL_TAG)
+#define DF_MALLOC(n)				ExAllocatePoolWithTag (	\
+										NonPagedPool,		\
+										(SIZE_T)(n),		\
+										DF_POOL_TAG )
+
 extern	ULONG				g_TraceFlags;
 extern	PDEVICE_OBJECT		g_pDeviceObject;
