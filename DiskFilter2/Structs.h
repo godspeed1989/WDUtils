@@ -10,6 +10,10 @@
 #define DF_DRIVER_EXTENSION_ID					0
 #define DF_DRIVER_EXTENSION_ID_UNICODE_BUFFER	1
 
+// obsolete
+#define MAX_PROTECTED_VOLUME					16  
+#define MAX_CACHE_VOLUME						16  
+
 typedef struct _DF_DRIVER_EXTENSION
 {
 	UNICODE_STRING	ServiceKeyName;
