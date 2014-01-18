@@ -2,6 +2,8 @@
 #include "Utils.h"
 #include "DiskFilterIoctl.h"
 
+NTSTATUS DF_CreateRWThread(PDF_DEVICE_EXTENSION DevExt);
+
 NTSTATUS
 DF_DispatchDefault(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
@@ -23,7 +25,7 @@ DF_DispatchPower(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 	IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
-	DBG_PRINT(DBG_TRACE_ROUTINES, ("DF_DispatchPower: "));
+	DBG_PRINT(DBG_TRACE_ROUTINES, ("%s: ", __FUNCTION__));
 	if (IrpSp->Parameters.Power.Type == SystemPowerState)
 	{
 		DBG_PRINT(DBG_TRACE_OPS, ("SystemPowerState...\n"));
@@ -48,50 +50,16 @@ DF_DispatchPower(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 #endif
 }
 
-static BOOLEAN
-IsProtectedVolume(PDEVICE_OBJECT DeviceObject)
-{
-	ULONG					i;
-	BOOLEAN					bIsProtected;
-	PDF_DEVICE_EXTENSION	DevExt;
-	PDF_DRIVER_EXTENSION	DrvExt;
-
-	bIsProtected = FALSE;
-	DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
-	DrvExt = (PDF_DRIVER_EXTENSION)IoGetDriverObjectExtension
-				(DeviceObject->DriverObject,DF_DRIVER_EXTENSION_ID);
-#if WINVER > _WIN32_WINNT_WINXP
-	if (!KeAreAllApcsDisabled())
-#else
-	while (!KeAreApcsDisabled());
-#endif
-	{
-		if (NT_SUCCESS(IoVolumeDeviceToDosName(DevExt->PhysicalDeviceObject, &DevExt->VolumeDosName)))
-		{
-			KdPrint((": [%wZ] Online\n", &DevExt->VolumeDosName));
-			for (i = 0; DrvExt->ProtectedVolumes[i]; ++i)
-			{
-				if (DrvExt->ProtectedVolumes[i] == DevExt->VolumeDosName.Buffer[0])
-				{
-					bIsProtected = TRUE;
-				}
-			}
-		}
-	}
-	return bIsProtected;
-}
-
 NTSTATUS
 DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
-	NTSTATUS				Status;
 	PVOID					InputBuffer;
 	ULONG					InputLength;
 	PVOID					OutputBuffer;
 	ULONG					OutputLength;
-	PDRIVER_OBJECT			DriverObject;
-	PDF_DEVICE_EXTENSION	DevExt;
 	PIO_STACK_LOCATION		IrpSp;
+	PDF_DEVICE_EXTENSION	DevExt;
+	BOOLEAN					Type;
 	PAGED_CODE();
 
 	IrpSp = IoGetCurrentIrpStackLocation(Irp);
@@ -103,34 +71,114 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		InputLength = IrpSp->Parameters.DeviceIoControl.InputBufferLength;
 		OutputBuffer = Irp->AssociatedIrp.SystemBuffer;
 		OutputLength = IrpSp->Parameters.DeviceIoControl.OutputBufferLength;
-		DriverObject = DeviceObject->DriverObject;
 
 		switch (IrpSp->Parameters.DeviceIoControl.IoControlCode)
 		{
+		// Test IOCTL
 		case IOCTL_DF_TEST:
-			KdPrint(("DF_DispatchIoctl: Test Ioctl\n"));
+			DBG_PRINT(DBG_TRACE_OPS, ("%s: Test Ioctl\n", __FUNCTION__));
+			if (InputLength >= 2*sizeof(ULONG32) && OutputLength >= sizeof(ULONG32))
+			{
+				*(ULONG32*)OutputBuffer = ((ULONG32*)InputBuffer)[0] + ((ULONG32*)InputBuffer)[1];
+				Irp->IoStatus.Information = sizeof(ULONG32);
+			}
+			else
+				Irp->IoStatus.Information = 0;
 			Irp->IoStatus.Status = STATUS_SUCCESS;
-			Irp->IoStatus.Information = 0;
 			IoCompleteRequest(Irp, IO_NO_INCREMENT);
 			return Irp->IoStatus.Status;
-		case IOCTL_DF_QUERY_DISK_INFO:
-			KdPrint(("DF_DispatchIoctl: Query disk layout\n"));
-			DeviceObject = DriverObject->DeviceObject;
+		// Start or Stop All Filters
+		case IOCTL_DF_START_ALL:
+		case IOCTL_DF_STOP_ALL:
+			Type = (IOCTL_DF_START_ALL == IrpSp->Parameters.DeviceIoControl.IoControlCode);
+			DBG_PRINT(DBG_TRACE_OPS, ("%s: %s All Filters\n", __FUNCTION__, Type?"Start":"Stop"));
+			DeviceObject = g_pDriverObject->DeviceObject;
 			while (DeviceObject != NULL)
 			{
 				DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 				if (DeviceObject != g_pDeviceObject)
-					DF_QueryVolumeInfo(DeviceObject);
+				{
+					DevExt->CacheHit = 0;
+					DevExt->ReadCount = 0;
+					DevExt->WriteCount = 0;
+					DevExt->bIsProtected = Type;
+					if (Type == FALSE)
+						DestroyCachePool(&DevExt->CachePool);
+				}
 				DeviceObject = DeviceObject->NextDevice;
 			}
-			
 			Irp->IoStatus.Status = STATUS_SUCCESS;
 			Irp->IoStatus.Information = 0;
 			IoCompleteRequest(Irp, IO_NO_INCREMENT);
 			return Irp->IoStatus.Status;
-		default:
-			KdPrint(("DF_DispatchIoctl: Unknown User Ioctl\n"));
+		// Start or Stop One Filter
+		case IOCTL_DF_START:
+		case IOCTL_DF_STOP:
+			Type = (IOCTL_DF_START == IrpSp->Parameters.DeviceIoControl.IoControlCode);
+			DBG_PRINT(DBG_TRACE_OPS, ("%s: %s One Filter\n", __FUNCTION__, Type?"Start":"Stop"));
+			DeviceObject = g_pDriverObject->DeviceObject;
+			while (DeviceObject != NULL)
+			{
+				DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+				if (DeviceObject != g_pDeviceObject &&
+					DevExt->DiskNumber == ((ULONG32*)InputBuffer)[0] &&
+					DevExt->PartitionNumber == ((ULONG32*)InputBuffer)[1])
+				{
+					KdPrint(("%s Filter on disk(%u) partition(%u)\n", Type?"Start":"Stop",
+						((ULONG32*)InputBuffer)[0], ((ULONG32*)InputBuffer)[1]));
+					DevExt->CacheHit = 0;
+					DevExt->ReadCount = 0;
+					DevExt->WriteCount = 0;
+					DevExt->bIsProtected = Type;
+					if (Type == FALSE)
+						DestroyCachePool(&DevExt->CachePool);
+					break;
+				}
+				DeviceObject = DeviceObject->NextDevice;
+			}
 			Irp->IoStatus.Status = STATUS_SUCCESS;
+			Irp->IoStatus.Information = 0;
+			IoCompleteRequest(Irp, IO_NO_INCREMENT);
+			return Irp->IoStatus.Status;
+		// Get or Clear Statistic
+		case IOCTL_DF_GET_STAT:
+		case IOCTL_DF_CLEAR_STAT:
+			Type = (IOCTL_DF_GET_STAT == IrpSp->Parameters.DeviceIoControl.IoControlCode);
+			DBG_PRINT(DBG_TRACE_OPS, ("%s: %s Statistic\n", __FUNCTION__, Type?"Get":"Clear"));
+			DeviceObject = g_pDriverObject->DeviceObject;
+			while (DeviceObject != NULL)
+			{
+				DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+				if (DeviceObject != g_pDeviceObject &&
+					DevExt->DiskNumber == ((ULONG32*)InputBuffer)[0] &&
+					DevExt->PartitionNumber == ((ULONG32*)InputBuffer)[1])
+				{
+					KdPrint(("On disk(%u) partition(%u)\n", DevExt->DiskNumber, DevExt->PartitionNumber));
+					if (Type && OutputLength >= 3 * sizeof(ULONG32))
+					{
+						((ULONG32*)OutputBuffer)[0] = DevExt->CacheHit;
+						((ULONG32*)OutputBuffer)[1] = DevExt->ReadCount;
+						((ULONG32*)OutputBuffer)[2] = DevExt->WriteCount;
+						Irp->IoStatus.Information = 3 * sizeof(ULONG32);
+					}
+					else
+					{
+						DevExt->CacheHit = 0;
+						DevExt->ReadCount = 0;
+						DevExt->WriteCount = 0;
+						Irp->IoStatus.Information = 0;
+					}
+					break;
+				}
+				DeviceObject = DeviceObject->NextDevice;
+			}
+			Irp->IoStatus.Status = STATUS_SUCCESS;
+			IoCompleteRequest(Irp, IO_NO_INCREMENT);
+			return Irp->IoStatus.Status;
+		// Unknown Ioctl
+		default:
+			DBG_PRINT(DBG_TRACE_OPS, ("%s: Unknown User Ioctl\n", __FUNCTION__));
+			Irp->IoStatus.Status = STATUS_UNSUCCESSFUL;
 			Irp->IoStatus.Information = 0;
 			IoCompleteRequest(Irp, IO_NO_INCREMENT);
 			return Irp->IoStatus.Status;
@@ -141,22 +189,15 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		switch (IrpSp->Parameters.DeviceIoControl.IoControlCode)
 		{
 		case IOCTL_VOLUME_ONLINE:
-			DBG_PRINT(DBG_TRACE_OPS, ("DF_DispatchIoctl: IOCTL_VOLUME_ONLINE\n"));
-			if (IoForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp) &&
-				NT_SUCCESS(Irp->IoStatus.Status) &&
-				//IsProtectedVolume(DeviceObject) &&
-				NT_SUCCESS(DF_QueryVolumeInfo(DeviceObject))
-				)
+			DBG_PRINT(DBG_TRACE_OPS, ("%s: IOCTL_VOLUME_ONLINE\n", __FUNCTION__));
+			if (IoForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp))
 			{
-				KdPrint((": Protected\n"));
-				InitCachePool(&DevExt->CachePool);
-				//DevExt->bIsProtectedVolume = TRUE;
+				StartDevice(DeviceObject);
 			}
-			Status = Irp->IoStatus.Status;
 			IoCompleteRequest(Irp, IO_NO_INCREMENT);
-			return Status;
+			return Irp->IoStatus.Status;
 		case IOCTL_VOLUME_OFFLINE:
-			DBG_PRINT(DBG_TRACE_OPS, ("DF_DispatchIoctl: IOCTL_VOLUME_OFFLINE\n"));
+			DBG_PRINT(DBG_TRACE_OPS, ("%s: IOCTL_VOLUME_OFFLINE\n", __FUNCTION__));
 			// ... Flush back Cache
 			break;
 		}
@@ -182,14 +223,14 @@ DF_DispatchPnp(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	switch(IrpSp->MinorFunction)
 	{
 	case IRP_MN_START_DEVICE:
-		DBG_PRINT(DBG_TRACE_OPS, ("Pnp: Start Device...\n"));
+		DBG_PRINT(DBG_TRACE_OPS, ("%s: Start Device...\n", __FUNCTION__));
 		status = Irp->IoStatus.Status;
 		DevExt->CurrentPnpState = IRP_MN_START_DEVICE;
 		break;
 	case IRP_MN_DEVICE_USAGE_NOTIFICATION :
 		setPageable = FALSE;
 		bAddPageFile = IrpSp->Parameters.UsageNotification.InPath;
-		DBG_PRINT(DBG_TRACE_OPS, ("Pnp: Paging file request...\n"));
+		DBG_PRINT(DBG_TRACE_OPS, ("%s: Paging file request...\n", __FUNCTION__));
 		if (IrpSp->Parameters.UsageNotification.Type == DeviceUsageTypePaging)
 		//	Indicated it will create or delete a paging file.
 		{
@@ -232,13 +273,11 @@ DF_DispatchPnp(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 			}
 			else
 			{
-				// F
 				if (setPageable == TRUE) {
 					DeviceObject->Flags &= ~DO_POWER_PAGABLE;
 					setPageable = FALSE;
 				}
 			}
-			// G
 			KeSetEvent(&DevExt->PagingCountEvent, IO_NO_INCREMENT, FALSE);
 			status = Irp->IoStatus.Status;
 			IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -246,19 +285,12 @@ DF_DispatchPnp(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		}
 		break;
 	case IRP_MN_REMOVE_DEVICE:
-		DBG_PRINT(DBG_TRACE_OPS, ("Removing device ...\n"));
+		DBG_PRINT(DBG_TRACE_OPS, ("%s: Removing device ...\n", __FUNCTION__));
 		IoForwardIrpSynchronously(DeviceObject, Irp);
 		status = Irp->IoStatus.Status;
 		if (NT_SUCCESS(status))
 		{
-			DevExt->bIsProtectedVolume = FALSE;
-			//TODO: Flush back cache ...
-			if (DevExt->LowerDeviceObject)
-			{
-				IoDetachDevice(DevExt->LowerDeviceObject);
-			}
-			IoDeleteDevice(DeviceObject);
-			RtlFreeUnicodeString(&DevExt->VolumeDosName);
+			StopDevice(DeviceObject);
 		}
 		IoCompleteRequest(Irp, IO_NO_INCREMENT);
 		return status;
@@ -267,167 +299,30 @@ DF_DispatchPnp(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	return IoCallDriver(DevExt->LowerDeviceObject, Irp);
 }
 
-IO_COMPLETION_ROUTINE __CompletionRoutine;
-static NTSTATUS
-__CompletionRoutine(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
-{
-	if (Irp->PendingReturned == TRUE)
-	{
-		KeSetEvent ((PKEVENT) Context, IO_NO_INCREMENT, FALSE);
-	}
-	return STATUS_MORE_PROCESSING_REQUIRED;
-}
-
-NTSTATUS
-ForwardIrpSynchronously(PDEVICE_OBJECT DeviceObject, PIRP Irp)
-{
-	KEVENT		event;
-	NTSTATUS	status;
-
-	KeInitializeEvent(&event, NotificationEvent, FALSE);
-
-    IoCopyCurrentIrpStackLocationToNext(Irp);
-    IoSetCompletionRoutine (Irp,
-							__CompletionRoutine,
-							&event,
-							TRUE, TRUE, TRUE);
-    status = IoCallDriver(DeviceObject, Irp);
-
-    if (status == STATUS_PENDING)
-	{
-		KeWaitForSingleObject (&event,
-								Executive,// WaitReason
-								KernelMode,// must be Kernelmode to prevent the stack getting paged out
-								FALSE,
-								NULL// indefinite wait
-								);
-		status = Irp->IoStatus.Status;
-	}
-	return status;
-}
-
 NTSTATUS
 DF_DispatchReadWrite(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
-	LONGLONG					Offset;
-	ULONG						Length;
-	PUCHAR						SysBuf;
-	PIO_STACK_LOCATION			IrpSp;
-	PDF_DEVICE_EXTENSION		DevExt;
+	PDF_DEVICE_EXTENSION DevExt;
 	PAGED_CODE();
 
-	IrpSp = IoGetCurrentIrpStackLocation(Irp);
 	DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
-	if (DevExt->bIsProtectedVolume)
-	{	
-		// Get system buffer address
-		if (Irp->MdlAddress != NULL)
-			SysBuf = (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
-		else
-			SysBuf = (PUCHAR)Irp->UserBuffer;
-		if (SysBuf == NULL)
-			SysBuf = (PUCHAR)Irp->AssociatedIrp.SystemBuffer;
+	if (DevExt->bIsProtected == TRUE)
+	{
+		IoMarkIrpPending(Irp);
+		// Queue this IRP
+		ExInterlockedInsertTailList(&DevExt->RwList,
+			&Irp->Tail.Overlay.ListEntry, &DevExt->RwSpinLock);
+		// Set Event
+		KeSetEvent(&DevExt->RwThreadEvent, IO_NO_INCREMENT, FALSE);
 
-		// Get offset and length
-		if (IRP_MJ_READ == IrpSp->MajorFunction)
-		{
-			Offset = IrpSp->Parameters.Read.ByteOffset.QuadPart;
-			Length = IrpSp->Parameters.Read.Length;
-		}
-		else if (IRP_MJ_WRITE == IrpSp->MajorFunction)
-		{
-			Offset = IrpSp->Parameters.Write.ByteOffset.QuadPart;
-			Length = IrpSp->Parameters.Write.Length;
-		}
-		else
-		{
-			Offset = 0;
-			Length = 0;
-		}
-
-		if (!SysBuf || !Length) // Ignore this IRP.
-		{
-			IoSkipCurrentIrpStackLocation(Irp);
-			return IoCallDriver(DevExt->LowerDeviceObject, Irp);
-		}
-
-		if (IrpSp->MajorFunction == IRP_MJ_READ)
-			DBG_PRINT(DBG_TRACE_RW, ("%u-%u: R off(%I64d) len(%x)\n",
-				DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
-		else
-			DBG_PRINT(DBG_TRACE_RW, ("%u-%u: W off(%I64d) len(%x)\n",
-				DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
-		// Read Request
-		if (IrpSp->MajorFunction == IRP_MJ_READ)
-		{
-			// Cache Full Matched
-			if (QueryAndCopyFromCachePool(
-					&DevExt->CachePool,
-					SysBuf,
-					Offset,
-					Length) == TRUE)
-			{
-				KdPrint(("^^^^cache hit^^^^\n"));
-				Irp->IoStatus.Status = STATUS_SUCCESS;
-				Irp->IoStatus.Information = Length;
-				IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-				return STATUS_SUCCESS;
-			}
-			else
-			{
-				Irp->IoStatus.Information = 0;
-				Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-				ForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp);
-				if (NT_SUCCESS(Irp->IoStatus.Status))
-				{
-					UpdataCachePool(&DevExt->CachePool,
-									SysBuf,
-									Offset,
-									Length,
-									_READ_);
-					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-					return Irp->IoStatus.Status;
-				}
-				else
-				{
-					Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-					Irp->IoStatus.Information = 0;
-					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-					return Irp->IoStatus.Status;
-				}
-			}
-		}
-		// Write Request
-		else
-		{
-			Irp->IoStatus.Information = 0;
-			Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-			ForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp);
-			if (NT_SUCCESS(Irp->IoStatus.Status))
-			{
-				UpdataCachePool(&DevExt->CachePool,
-								SysBuf,
-								Offset,
-								Length,
-								_WRITE_);
-				IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-				return Irp->IoStatus.Status;
-			}
-			else
-			{
-				Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-				Irp->IoStatus.Information = 0;
-				IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-				return Irp->IoStatus.Status;
-			}
-		}
+		return STATUS_PENDING;
 	}
 	IoSkipCurrentIrpStackLocation(Irp);
 	return IoCallDriver(DevExt->LowerDeviceObject, Irp);
 }
 
 NTSTATUS
-DF_DispatchDevCtl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+DF_CtlDevDispatch(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
 	PDF_DEVICE_EXTENSION	DevExt;
 	PAGED_CODE();

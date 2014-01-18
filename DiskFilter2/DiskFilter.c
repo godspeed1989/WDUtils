@@ -3,9 +3,10 @@
 
 ULONG				g_TraceFlags;
 PDEVICE_OBJECT		g_pDeviceObject;
+PDRIVER_OBJECT		g_pDriverObject;
 
-NTSTATUS CreateControlDevice(PDRIVER_OBJECT pDriverObject);
-//{4D36E967-E325-11CE-BFC1-08002BE10318}
+NTSTATUS DF_CreateControlDevice(PDRIVER_OBJECT pDriverObject);
+
 NTSTATUS
 DriverEntry(PDRIVER_OBJECT DriverObject,
 			PUNICODE_STRING RegistryPath)
@@ -15,6 +16,7 @@ DriverEntry(PDRIVER_OBJECT DriverObject,
 	PDF_DRIVER_EXTENSION	DrvExt;
 
 	g_TraceFlags = DBG_TRACE_ROUTINES | DBG_TRACE_OPS | DBG_TRACE_RW;
+	g_pDriverObject = DriverObject;
 	for (i = 0; i<=IRP_MJ_MAXIMUM_FUNCTION; ++i)
 	{
 		DriverObject->MajorFunction[i] = DF_DispatchDefault;
@@ -26,9 +28,9 @@ DriverEntry(PDRIVER_OBJECT DriverObject,
 	DriverObject->MajorFunction[IRP_MJ_PNP] = DF_DispatchPnp;
 	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = DF_DispatchIoctl;
 
-	DriverObject->MajorFunction[IRP_MJ_CREATE] = DF_DispatchDevCtl;
-	DriverObject->MajorFunction[IRP_MJ_CLOSE] = DF_DispatchDevCtl;
-	DriverObject->MajorFunction[IRP_MJ_CLEANUP] = DF_DispatchDevCtl;
+	DriverObject->MajorFunction[IRP_MJ_CREATE] = DF_CtlDevDispatch;
+	DriverObject->MajorFunction[IRP_MJ_CLOSE] = DF_CtlDevDispatch;
+	DriverObject->MajorFunction[IRP_MJ_CLEANUP] = DF_CtlDevDispatch;
 
 	DriverObject->DriverExtension->AddDevice = DF_AddDevice;
 
@@ -54,16 +56,15 @@ DriverEntry(PDRIVER_OBJECT DriverObject,
 	IoRegisterBootDriverReinitialization(DriverObject, DF_DriverReinitializeRoutine, NULL);
 
 	KdPrint(("Service key :\n%wZ\n", &DrvExt->ServiceKeyName));
-	return CreateControlDevice(DriverObject);
+	return DF_CreateControlDevice(DriverObject);
 }
 
 NTSTATUS
 DF_QueryConfig(PWCHAR ProtectedVolume, PWCHAR CacheVolume, PUNICODE_STRING RegistryPath)
 {
-	NTSTATUS Status;
-	ULONG i;
+	ULONG		i;
+	NTSTATUS	Status;
 	RTL_QUERY_REGISTRY_TABLE QueryTable[3 + 1] = {0};
-
 	UNICODE_STRING ustrProtectedVolume;
 	UNICODE_STRING ustrCacheVolume;
 
@@ -143,26 +144,7 @@ DF_DriverReinitializeRoutine(PDRIVER_OBJECT DriverObject, PVOID Context, ULONG C
 
 	UNREFERENCED_PARAMETER(Context);
 	UNREFERENCED_PARAMETER(Count);
-	DBG_PRINT(DBG_TRACE_ROUTINES, ("Start Reinitialize...\n"));
-
-	DeviceObject = DriverObject->DeviceObject;
-	while (DeviceObject != NULL)
-	{
-		DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
-		if (DeviceObject != g_pDeviceObject)
-			DF_QueryVolumeInfo(DeviceObject);
-		/*
-		KdPrint((" -> [%wZ]", &DevExt->VolumeDosName));
-		if (DevExt->bIsProtectedVolume)
-		{
-			KdPrint((" Protected\n"));
-		}
-		else
-		{
-			KdPrint(("\n"));
-		}*/
-		DeviceObject = DeviceObject->NextDevice;
-	}
+	DBG_PRINT(DBG_TRACE_ROUTINES, ("%s...\n", __FUNCTION__));
 }
 
 NTSTATUS
@@ -174,8 +156,8 @@ DF_AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject)
 	PDEVICE_OBJECT			LowerDeviceObject;
 	PAGED_CODE();
 
-	DBG_PRINT(DBG_TRACE_ROUTINES, ("DF_AddDevice: Enter\n"));
-
+	DBG_PRINT(DBG_TRACE_ROUTINES, ("%s: Enter\n", __FUNCTION__));
+	// Create Device Object
 	Status = IoCreateDevice(DriverObject,
 							sizeof(DF_DEVICE_EXTENSION),
 							NULL,
@@ -186,22 +168,31 @@ DF_AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject)
 							);
 	if (!NT_SUCCESS(Status))
 	{
-		KdPrint(("Create device failed"));
+		KdPrint(("%s: Create device failed\n", __FUNCTION__));
+		goto l_error;
+	}
+	// Attach to Lower Device
+	LowerDeviceObject = IoAttachDeviceToDeviceStack(DeviceObject, PhysicalDeviceObject);
+	if (LowerDeviceObject == NULL)
+	{
+		KdPrint(("%s: Attach device failed\n", __FUNCTION__));
 		goto l_error;
 	}
 
 	DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
-	DevExt->bIsProtectedVolume = FALSE;
+	// Initialize Device Extention
+	DevExt->DiskNumber = -1;
+	DevExt->PartitionNumber = -1;
+	DevExt->bIsProtected = FALSE;
 	DevExt->PhysicalDeviceObject = PhysicalDeviceObject;
-	KeInitializeEvent(&DevExt->PagingCountEvent, NotificationEvent, TRUE);
-
-	LowerDeviceObject = IoAttachDeviceToDeviceStack(DeviceObject, PhysicalDeviceObject);
-	if (LowerDeviceObject == NULL)
-	{
-		KdPrint(("Attach device failed...\n"));
-		goto l_error;
-	}
 	DevExt->LowerDeviceObject = LowerDeviceObject;
+
+	KeInitializeEvent(&DevExt->PagingCountEvent, NotificationEvent, TRUE);
+	DevExt->RwThreadObject = NULL;
+	DevExt->bTerminalThread = FALSE;
+	InitializeListHead(&DevExt->RwList);
+	KeInitializeSpinLock(&DevExt->RwSpinLock);
+	KeInitializeEvent(&DevExt->RwThreadEvent, SynchronizationEvent, FALSE);
 
 	DeviceObject->Flags = (LowerDeviceObject->Flags & (DO_DIRECT_IO | DO_BUFFERED_IO))| DO_POWER_PAGABLE;
 	DeviceObject->Characteristics = LowerDeviceObject->Characteristics;
@@ -220,31 +211,33 @@ l_error:
 }
 
 static NTSTATUS
-CreateControlDevice(PDRIVER_OBJECT pDriverObject)
+DF_CreateControlDevice(PDRIVER_OBJECT pDriverObject)
 {
 	NTSTATUS				status;
-	PDF_DEVICE_EXTENSION	pDevExt;
+	PDF_DEVICE_EXTENSION	DevExt;
 	UNICODE_STRING			DevName;
 	UNICODE_STRING			SymLinkName;
 
 	RtlInitUnicodeString(&DevName, L"\\Device\\Diskfilter");
 	status = IoCreateDevice(pDriverObject,
-							sizeof(DF_DEVICE_EXTENSION),//0?
+							sizeof(DF_DEVICE_EXTENSION),
 							&DevName,
 							FILE_DEVICE_UNKNOWN,
 							0, TRUE,
 							&g_pDeviceObject);
 	if(NT_SUCCESS(status))
 	{
-		DbgPrint("Message Device Create success\n");
+		KdPrint(("%s: success\n", __FUNCTION__));
 	}
 	else
 	{
-		DbgPrint("Message Device Create fail\n");
+		KdPrint(("%s: failed\n", __FUNCTION__));
 		return status;
 	}
 
 	g_pDeviceObject->Flags |= DO_BUFFERED_IO;
+	DevExt = (PDF_DEVICE_EXTENSION)g_pDeviceObject->DeviceExtension;
+	DevExt->bIsProtected = FALSE;
 
 	RtlInitUnicodeString(&SymLinkName, L"\\DosDevices\\Diskfilter");
 	status = IoCreateSymbolicLink(&SymLinkName, &DevName);

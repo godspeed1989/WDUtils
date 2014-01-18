@@ -1,34 +1,22 @@
 #pragma once
-
 #include "Structs.h"
-
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 
 IO_COMPLETION_ROUTINE DF_QueryVolumeCompletion;
 
-#ifdef __cplusplus
-}
-#endif
-
-NTSTATUS IoDoRequestSync (
+NTSTATUS IoDoRWRequestSync (
 		ULONG			MajorFunction,
 		PDEVICE_OBJECT  DeviceObject,
 		PVOID 			Buffer,
 		ULONG			Length,
 		PLARGE_INTEGER	StartingOffset
 	);
-
-NTSTATUS IoDoRequestAsync (
+NTSTATUS IoDoRWRequestAsync (
 		ULONG			MajorFunction,
 		PDEVICE_OBJECT  DeviceObject,
 		PVOID 			Buffer,
 		ULONG			Length,
 		PLARGE_INTEGER	StartingOffset
 	);
-
 NTSTATUS IoDoIoctl (
 		ULONG			IoControlCode,
 		PDEVICE_OBJECT	DeviceObject,
@@ -37,10 +25,12 @@ NTSTATUS IoDoIoctl (
 		PVOID			OutputBuffer,
 		IN ULONG		OutputBufferLength
 	);
-
-NTSTATUS DF_QueryVolumeInfo (
+NTSTATUS DF_QueryDeviceInfo (
 		PDEVICE_OBJECT DeviceObject
 	);
+
+VOID StartDevice(PDEVICE_OBJECT DeviceObject);
+VOID StopDevice(PDEVICE_OBJECT DeviceObject);
 
 #pragma pack(1)
 typedef struct _DP_FAT16_BOOT_SECTOR
