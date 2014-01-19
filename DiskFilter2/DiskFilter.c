@@ -1,6 +1,8 @@
 #include "Utils.h"
 #include "DiskFilter.h"
 
+extern PULONG InitSafeBootMode;
+
 ULONG				g_TraceFlags;
 PDEVICE_OBJECT		g_pDeviceObject;
 PDRIVER_OBJECT		g_pDriverObject;
@@ -14,6 +16,9 @@ DriverEntry(PDRIVER_OBJECT DriverObject,
 	ULONG					i, ClientId;
 	NTSTATUS				Status;
 	PDF_DRIVER_EXTENSION	DrvExt;
+
+	if ( *InitSafeBootMode )
+		return STATUS_SUCCESS;
 
 	g_TraceFlags = DBG_TRACE_ROUTINES | DBG_TRACE_OPS | DBG_TRACE_RW;
 	g_pDriverObject = DriverObject;
