@@ -47,6 +47,8 @@ struct command options[] =
 	{"stop", "Stop One Filter", IOCTL_DF_STOP},
 	{"stat", "Get Statistic on One Volume", IOCTL_DF_GET_STAT},
 	{"clear", "Clear Statistic of One Volume", IOCTL_DF_CLEAR_STAT},
+	{"quiet", "Quite All Output", IOCTL_DF_QUIET},
+	{"verbose", "Verbose All Output", IOCTL_DF_VERBOSE},
 	{"q", "Quit", 0},
 	{0, 0, 0}
 };

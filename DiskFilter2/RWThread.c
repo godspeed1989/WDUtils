@@ -1,4 +1,5 @@
 #include "DiskFilter.h"
+#include "md5.h"
 
 IO_COMPLETION_ROUTINE __CompletionRoutine;
 static NTSTATUS
@@ -38,6 +39,21 @@ ForwardIrpSynchronously(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	return status;
 }
 
+static VOID
+PrintMD5(PVOID buf, ULONG len)
+{
+	int i;
+	md5_state_t state;
+	md5_byte_t digest[16];
+
+	md5_init(&state);
+	md5_append(&state, buf, len);
+	md5_finish(&state, digest);
+	for (i=0; i<16; i++)
+		KdPrint(("%02x", digest[i]));
+	KdPrint(("\n"));
+}
+
 VOID DF_ReadWriteThread(PVOID Context)
 {
 	PIRP					Irp;
@@ -68,6 +84,14 @@ VOID DF_ReadWriteThread(PVOID Context)
 		{
 			Irp = CONTAINING_RECORD(ReqEntry, IRP, Tail.Overlay.ListEntry);
 			IrpSp = IoGetCurrentIrpStackLocation(Irp);
+
+			IoSetCancelRoutine (Irp, NULL);
+			if (Irp->Cancel)
+			{
+				//CompleteOriginalIrp (item, STATUS_CANCELLED, 0);
+				continue;
+			}
+			
 			// Get system buffer address
 			if (Irp->MdlAddress != NULL)
 				SysBuf = (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
@@ -95,6 +119,7 @@ VOID DF_ReadWriteThread(PVOID Context)
 
 			if (!SysBuf || !Length) // Ignore this IRP.
 			{
+				DbgPrint("Wired IRP : %p %x :\n", SysBuf, Length);
 				IoSkipCurrentIrpStackLocation(Irp);
 				IoCallDriver(DevExt->LowerDeviceObject, Irp);
 				continue;
@@ -103,12 +128,13 @@ VOID DF_ReadWriteThread(PVOID Context)
 			if (IrpSp->MajorFunction == IRP_MJ_READ)
 			{
 				DevExt->ReadCount++;
-				DBG_PRINT(DBG_TRACE_RW, ("%u-%u: R off(%I64d) len(%x)\n", DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
+				DBG_PRINT(DBG_TRACE_RW, ("%u-%u: R off(%I64d) len(%d)\n", DevExt->DiskNumber, DevExt->PartitionNumber,
+					Offset, Length));
 			}
 			else
 			{
 				DevExt->WriteCount++;
-				DBG_PRINT(DBG_TRACE_RW, ("%u-%u: W off(%I64d) len(%x)\n", DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
+				DBG_PRINT(DBG_TRACE_RW, ("%u-%u: W off(%I64d) len(%d)\n", DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
 			}
 
 			// Read Request
@@ -121,7 +147,10 @@ VOID DF_ReadWriteThread(PVOID Context)
 						Offset,
 						Length) == TRUE)
 				{
-					KdPrint(("^^^^cache hit^^^^\n"));
+					KdPrint(("hit:%u-%u: off(%I64d) len(%d)\n", DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
+				#if 0
+					PrintMD5(SysBuf, Length);
+				#endif
 					DevExt->CacheHit++;
 					Irp->IoStatus.Status = STATUS_SUCCESS;
 					Irp->IoStatus.Information = Length;
@@ -139,7 +168,8 @@ VOID DF_ReadWriteThread(PVOID Context)
 										SysBuf,
 										Offset,
 										Length,
-										_READ_);
+										_READ_,
+										DevExt->PhysicalDeviceObject);
 						IoCompleteRequest(Irp, IO_DISK_INCREMENT);
 						continue;
 					}
@@ -164,14 +194,15 @@ VOID DF_ReadWriteThread(PVOID Context)
 									SysBuf,
 									Offset,
 									Length,
-									_WRITE_);
+									_WRITE_,
+									DevExt->PhysicalDeviceObject);
 					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
 					continue;
 				}
 				else
 				{
-					Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
 					Irp->IoStatus.Information = 0;
+					Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
 					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
 					continue;
 				}

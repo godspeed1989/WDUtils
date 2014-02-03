@@ -2,7 +2,7 @@
 
 #include <Ntifs.h>
 #include <Ntddk.h>
-#include <Ntdddisk.h.>
+#include <Ntdddisk.h>
 #include <Ntddvol.h>
 #include <Wdm.h>
 #include "Cache.h"

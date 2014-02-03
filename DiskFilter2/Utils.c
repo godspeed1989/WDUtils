@@ -1,5 +1,6 @@
 #include "Utils.h"
 #include "DiskFilter.h"
+#include <ntstrsafe.h>
 
 IO_COMPLETION_ROUTINE QueryCompletion;
 NTSTATUS QueryCompletion (PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
@@ -10,17 +11,17 @@ NTSTATUS QueryCompletion (PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
 	KeSetEvent((PKEVENT)Context, (KPRIORITY)0, FALSE);
 	if(Irp->AssociatedIrp.SystemBuffer && (Irp->Flags & IRP_DEALLOCATE_BUFFER) )
 	{
-            ExFreePool(Irp->AssociatedIrp.SystemBuffer);
-    }
+		ExFreePool(Irp->AssociatedIrp.SystemBuffer);
+	}
 	else if (Irp->MdlAddress != NULL)
 	{
-        for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl)
+		for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl)
 		{
-            nextMdl = mdl->Next;
-            MmUnlockPages( mdl ); IoFreeMdl( mdl );
-        }
-        Irp->MdlAddress = NULL;
-    }
+			nextMdl = mdl->Next;
+			MmUnlockPages( mdl ); IoFreeMdl( mdl );
+		}
+		Irp->MdlAddress = NULL;
+	}
 	IoFreeIrp(Irp);
 
 	return STATUS_MORE_PROCESSING_REQUIRED;
@@ -193,6 +194,11 @@ VOID StartDevice(PDEVICE_OBJECT DeviceObject)
 			KdPrint((": %p Start\n", DeviceObject));
 		}
 		KdPrint(("\n"));
+		// TESTING..................................................................................
+	#if 0
+		if (DevExt->DiskNumber == 0 && DevExt->PartitionNumber == 1)
+			DevExt->bIsProtected = TRUE;
+	#endif
 	}
 	DeviceObject = DeviceObject->NextDevice;
 }
@@ -319,4 +325,27 @@ NTSTATUS DF_QueryDeviceInfo(PDEVICE_OBJECT DeviceObject)
 		DevExt->SectorSize, DevExt->ClusterSize, DevExt->TotalSize.QuadPart));
 
 	return STATUS_SUCCESS;
+}
+
+NTSTATUS
+DF_GetDiskDeviceObjectPointer(
+	ULONG			DiskIndex,
+	ULONG			PartitionIndex,
+	PFILE_OBJECT	*FileObject,
+	PDEVICE_OBJECT	*DeviceObject
+	)
+{
+	NTSTATUS					status;
+	CHAR						SourceString[64] = "";
+	STRING						astr;
+	UNICODE_STRING				ustr;
+
+	RtlStringCbPrintfA(SourceString, 64, "\\Device\\Harddisk%d\\Partition%d", DiskIndex, PartitionIndex);
+	RtlInitAnsiString(&astr, SourceString);
+	RtlAnsiStringToUnicodeString(&ustr, &astr, TRUE);
+
+	status = IoGetDeviceObjectPointer(&ustr, FILE_READ_ATTRIBUTES, FileObject, DeviceObject);
+
+	RtlFreeUnicodeString(&ustr);
+	return status;
 }

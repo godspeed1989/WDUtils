@@ -1,5 +1,5 @@
 #pragma once
-#include "Structs.h"
+#include <Ntifs.h>
 
 IO_COMPLETION_ROUTINE DF_QueryVolumeCompletion;
 
@@ -27,6 +27,12 @@ NTSTATUS IoDoIoctl (
 	);
 NTSTATUS DF_QueryDeviceInfo (
 		PDEVICE_OBJECT DeviceObject
+	);
+NTSTATUS DF_GetDiskDeviceObjectPointer(
+	ULONG			DiskIndex,
+	ULONG			PartitionIndex,
+	PFILE_OBJECT	*FileObject,
+	PDEVICE_OBJECT	*DeviceObject
 	);
 
 VOID StartDevice(PDEVICE_OBJECT DeviceObject);

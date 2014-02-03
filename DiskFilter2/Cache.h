@@ -3,6 +3,8 @@
 #include "bpt.h"
 #include "common.h"
 
+#define READ_VERIFY
+
 #define _READ_								TRUE
 #define _WRITE_								FALSE
 #define SECTOR_SIZE							512
@@ -12,6 +14,7 @@ typedef struct _CACHE_BLOCK
 {
 	BOOLEAN				Accessed;
 	BOOLEAN				Modified;
+	LONGLONG			Index;
 	UCHAR				Data[SECTOR_SIZE];
 }CACHE_BLOCK, *PCACHE_BLOCK;
 
@@ -42,5 +45,6 @@ VOID
 		PUCHAR Buf,
 		LONGLONG Offset,
 		ULONG Length,
-		BOOLEAN Type
+		BOOLEAN Type,
+		PDEVICE_OBJECT  PhysicalDeviceObject
 	);

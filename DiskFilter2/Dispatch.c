@@ -98,18 +98,22 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 				DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 				if (DeviceObject != g_pDeviceObject)
 				{
-					DevExt->CacheHit = 0;
-					DevExt->ReadCount = 0;
-					DevExt->WriteCount = 0;
-					DevExt->bIsProtected = Type;
 					if (Type == FALSE)
+					{
+						DevExt->CacheHit = 0;
+						DevExt->ReadCount = 0;
+						DevExt->WriteCount = 0;
 						DestroyCachePool(&DevExt->CachePool);
+					}
+					else if (DevExt->bIsProtected == FALSE)
+					{
+						InitCachePool(&DevExt->CachePool);
+					}
+					DevExt->bIsProtected = Type;
 				}
 				DeviceObject = DeviceObject->NextDevice;
 			}
-			Irp->IoStatus.Status = STATUS_SUCCESS;
-			Irp->IoStatus.Information = 0;
-			IoCompleteRequest(Irp, IO_NO_INCREMENT);
+			COMPLETE_IRP(Irp, STATUS_SUCCESS);
 			return Irp->IoStatus.Status;
 		// Start or Stop One Filter
 		case IOCTL_DF_START:
@@ -126,19 +130,23 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 				{
 					KdPrint(("%s Filter on disk(%u) partition(%u)\n", Type?"Start":"Stop",
 						((ULONG32*)InputBuffer)[0], ((ULONG32*)InputBuffer)[1]));
-					DevExt->CacheHit = 0;
-					DevExt->ReadCount = 0;
-					DevExt->WriteCount = 0;
-					DevExt->bIsProtected = Type;
 					if (Type == FALSE)
+					{
+						DevExt->CacheHit = 0;
+						DevExt->ReadCount = 0;
+						DevExt->WriteCount = 0;
 						DestroyCachePool(&DevExt->CachePool);
+					}
+					else if (DevExt->bIsProtected == FALSE)
+					{
+						InitCachePool(&DevExt->CachePool);
+					}
+					DevExt->bIsProtected = Type;
 					break;
 				}
 				DeviceObject = DeviceObject->NextDevice;
 			}
-			Irp->IoStatus.Status = STATUS_SUCCESS;
-			Irp->IoStatus.Information = 0;
-			IoCompleteRequest(Irp, IO_NO_INCREMENT);
+			COMPLETE_IRP(Irp, STATUS_SUCCESS);
 			return Irp->IoStatus.Status;
 		// Get or Clear Statistic
 		case IOCTL_DF_GET_STAT:
@@ -154,12 +162,14 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 					DevExt->PartitionNumber == ((ULONG32*)InputBuffer)[1])
 				{
 					KdPrint(("On disk(%u) partition(%u)\n", DevExt->DiskNumber, DevExt->PartitionNumber));
-					if (Type && OutputLength >= 3 * sizeof(ULONG32))
+					if (Type && OutputLength >= 5 * sizeof(ULONG32))
 					{
 						((ULONG32*)OutputBuffer)[0] = DevExt->CacheHit;
 						((ULONG32*)OutputBuffer)[1] = DevExt->ReadCount;
 						((ULONG32*)OutputBuffer)[2] = DevExt->WriteCount;
-						Irp->IoStatus.Information = 3 * sizeof(ULONG32);
+						((ULONG32*)OutputBuffer)[3] = DevExt->CachePool.Size;
+						((ULONG32*)OutputBuffer)[4] = DevExt->CachePool.Used;
+						Irp->IoStatus.Information = 5 * sizeof(ULONG32);
 					}
 					else
 					{
@@ -175,12 +185,21 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 			Irp->IoStatus.Status = STATUS_SUCCESS;
 			IoCompleteRequest(Irp, IO_NO_INCREMENT);
 			return Irp->IoStatus.Status;
+		// Setup Output
+		case IOCTL_DF_QUIET:
+			g_TraceFlags = 0;
+			DBG_PRINT(DBG_TRACE_OPS, ("%s: Quite All Output\n", __FUNCTION__));
+			COMPLETE_IRP(Irp, STATUS_SUCCESS);
+			return Irp->IoStatus.Status;
+		case IOCTL_DF_VERBOSE:
+			g_TraceFlags = -1;
+			DBG_PRINT(DBG_TRACE_OPS, ("%s: Verbose All Output\n", __FUNCTION__));
+			COMPLETE_IRP(Irp, STATUS_SUCCESS);
+			return Irp->IoStatus.Status;
 		// Unknown Ioctl
 		default:
 			DBG_PRINT(DBG_TRACE_OPS, ("%s: Unknown User Ioctl\n", __FUNCTION__));
-			Irp->IoStatus.Status = STATUS_UNSUCCESSFUL;
-			Irp->IoStatus.Information = 0;
-			IoCompleteRequest(Irp, IO_NO_INCREMENT);
+			COMPLETE_IRP(Irp, STATUS_UNSUCCESSFUL);
 			return Irp->IoStatus.Status;
 		}
 	}
@@ -199,6 +218,13 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		case IOCTL_VOLUME_OFFLINE:
 			DBG_PRINT(DBG_TRACE_OPS, ("%s: IOCTL_VOLUME_OFFLINE\n", __FUNCTION__));
 			// ... Flush back Cache
+			break;
+		case IOCTL_DISK_COPY_DATA:
+			DBG_PRINT(DBG_TRACE_OPS, ("%s: IOCTL_DISK_COPY_DATA\n", __FUNCTION__));
+			// ... Flush back Cache
+			break;
+		default:
+			//DBG_PRINT(DBG_TRACE_OPS, ("%s: 0x%X\n", __FUNCTION__, IrpSp->Parameters.DeviceIoControl.IoControlCode));
 			break;
 		}
 	}
@@ -330,9 +356,7 @@ DF_CtlDevDispatch(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 	if (DeviceObject == g_pDeviceObject)
 	{
-		Irp->IoStatus.Status = STATUS_SUCCESS;
-		Irp->IoStatus.Information = 0;
-		IoCompleteRequest(Irp, IO_NO_INCREMENT);
+		COMPLETE_IRP(Irp, STATUS_SUCCESS);
 	}
 	else
 	{

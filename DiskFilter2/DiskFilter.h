@@ -43,8 +43,12 @@ VOID
 	( FlagOn(g_TraceFlags,(_dbgLevel) ) ? DbgPrint _string : ((void)0) )
 
 #define DF_POOL_TAG					'dftD'
-#define DF_FREE(p)					ExFreePoolWithTag(p,DF_POOL_TAG)
-#define DF_MALLOC(n)				ExAllocatePoolWithTag(	\
-										NonPagedPool,		\
-										(SIZE_T)(n),		\
+#define DF_FREE(_p)					ExFreePoolWithTag(_p,DF_POOL_TAG)
+#define DF_MALLOC(_n)				ExAllocatePoolWithTag(			\
+										NonPagedPool,				\
+										(SIZE_T)(_n),				\
 										DF_POOL_TAG )
+
+#define COMPLETE_IRP(_Irp,_Status)	_Irp->IoStatus.Status=_Status;			\
+									_Irp->IoStatus.Information=0;			\
+									IoCompleteRequest(_Irp,IO_NO_INCREMENT);

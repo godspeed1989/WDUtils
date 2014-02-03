@@ -20,7 +20,7 @@ DriverEntry(PDRIVER_OBJECT DriverObject,
 	if ( *InitSafeBootMode )
 		return STATUS_SUCCESS;
 
-	g_TraceFlags = DBG_TRACE_ROUTINES | DBG_TRACE_OPS | DBG_TRACE_RW;
+	g_TraceFlags = DBG_TRACE_ROUTINES | DBG_TRACE_OPS;
 	g_pDriverObject = DriverObject;
 	for (i = 0; i<=IRP_MJ_MAXIMUM_FUNCTION; ++i)
 	{
@@ -150,6 +150,11 @@ DF_DriverReinitializeRoutine(PDRIVER_OBJECT DriverObject, PVOID Context, ULONG C
 	UNREFERENCED_PARAMETER(Context);
 	UNREFERENCED_PARAMETER(Count);
 	DBG_PRINT(DBG_TRACE_ROUTINES, ("%s...\n", __FUNCTION__));
+
+	DeviceObject = DriverObject->DeviceObject;
+	for(; DeviceObject; DeviceObject = DeviceObject->NextDevice)
+	{
+	}
 }
 
 NTSTATUS
@@ -176,13 +181,6 @@ DF_AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject)
 		KdPrint(("%s: Create device failed\n", __FUNCTION__));
 		goto l_error;
 	}
-	// Attach to Lower Device
-	LowerDeviceObject = IoAttachDeviceToDeviceStack(DeviceObject, PhysicalDeviceObject);
-	if (LowerDeviceObject == NULL)
-	{
-		KdPrint(("%s: Attach device failed\n", __FUNCTION__));
-		goto l_error;
-	}
 
 	DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 	// Initialize Device Extention
@@ -190,7 +188,6 @@ DF_AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject)
 	DevExt->PartitionNumber = -1;
 	DevExt->bIsProtected = FALSE;
 	DevExt->PhysicalDeviceObject = PhysicalDeviceObject;
-	DevExt->LowerDeviceObject = LowerDeviceObject;
 
 	KeInitializeEvent(&DevExt->PagingCountEvent, NotificationEvent, TRUE);
 	DevExt->RwThreadObject = NULL;
@@ -199,9 +196,18 @@ DF_AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject)
 	KeInitializeSpinLock(&DevExt->RwSpinLock);
 	KeInitializeEvent(&DevExt->RwThreadEvent, SynchronizationEvent, FALSE);
 
+	// Attach to Lower Device
+	LowerDeviceObject = IoAttachDeviceToDeviceStack(DeviceObject, PhysicalDeviceObject);
+	if (LowerDeviceObject == NULL)
+	{
+		KdPrint(("%s: Attach device failed\n", __FUNCTION__));
+		goto l_error;
+	}
+	DevExt->LowerDeviceObject = LowerDeviceObject;
 	DeviceObject->Flags = (LowerDeviceObject->Flags & (DO_DIRECT_IO | DO_BUFFERED_IO))| DO_POWER_PAGABLE;
 	DeviceObject->Characteristics = LowerDeviceObject->Characteristics;
 	DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+
 	return STATUS_SUCCESS;
 l_error:
 	if (LowerDeviceObject)

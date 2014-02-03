@@ -73,6 +73,7 @@ static BOOLEAN AddOneBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 	{
 		pBlock->Accessed = FALSE;
 		pBlock->Modified = FALSE;
+		pBlock->Index = Index;
 		RtlCopyMemory (
 			pBlock->Data,
 			Data,
@@ -81,8 +82,6 @@ static BOOLEAN AddOneBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 		CachePool->Used++;
 		// Insert into bpt
 		CachePool->bpt_root = Insert(CachePool->bpt_root, Index, pBlock);
-		if (CachePool->Size == CachePool->Used)
-			DbgPrint("Cache Pool is Full\n");
 		return TRUE;
 	}
 	return FALSE;
@@ -179,6 +178,7 @@ found:
 	{
 		pBlock->Accessed = FALSE;
 		pBlock->Modified = FALSE;
+		pBlock->Index = Index;
 		RtlCopyMemory (
 			pBlock->Data,
 			Data,
@@ -188,12 +188,15 @@ found:
 	}
 }
 
+#ifdef READ_VERIFY
+#include "Utils.h"
+#endif
 /**
  * Update Cache Pool with Buffer
  */
 VOID UpdataCachePool(
 	PCACHE_POOL CachePool, PUCHAR Buf, LONGLONG Offset, ULONG Length,
-	BOOLEAN Type
+	BOOLEAN Type, PDEVICE_OBJECT PhysicalDeviceObject
 )
 {
 	ULONG i, Skip;
@@ -226,7 +229,35 @@ VOID UpdataCachePool(
 				if(QueryPoolByIndex(CachePool, Offset+i, &pBlock) == FALSE)
 					AddOneBlockToPool(CachePool, Offset+i, Buf+i*SECTOR_SIZE);
 				else
+				{
+				#ifdef READ_VERIFY
+					NTSTATUS Status;
+					ULONG matched1, matched2;
+					LARGE_INTEGER readOffset;
+					UCHAR Data[SECTOR_SIZE];
+					readOffset.QuadPart = SECTOR_SIZE * pBlock->Index;
+					Status = IoDoRWRequestSync (
+						IRP_MJ_READ,
+						PhysicalDeviceObject,
+						Data,
+						SECTOR_SIZE,
+						&readOffset
+					);
+					if (NT_SUCCESS(Status))
+					{
+						matched1 = RtlCompareMemory(Data, pBlock->Data, SECTOR_SIZE);
+						matched2 = RtlCompareMemory(Data, Buf+i*SECTOR_SIZE, SECTOR_SIZE);
+					}
+					else
+					{
+						matched1 = 9999999;
+						matched2 = 9999999;
+					}
+					if (matched1 != SECTOR_SIZE || matched2 != SECTOR_SIZE)
+						DbgPrint("XX--(%d)<-(%d)->(%d)--\n", matched1, SECTOR_SIZE, matched2);
+				#endif
 					pBlock->Accessed = TRUE;
+				}
 			}
 			else
 				break;

@@ -5,7 +5,7 @@
 #endif
 
 #ifndef USER_APP
-	#include <Ntddk.h>
+	#include <Ntifs.h>
 	#define CACHE_POOL_TAG						'cpiD'
 	#define BPT_POOL_TAG						'bptD'
 	#define assert(expr)						ASSERT(expr)
