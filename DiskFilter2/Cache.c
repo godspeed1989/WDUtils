@@ -114,8 +114,6 @@ BOOLEAN QueryAndCopyFromCachePool (
 	BOOLEAN front_broken, end_broken;
 	PCACHE_BLOCK *ppInternalBlocks = NULL;
 
-	//ASSERT(Offset % SECTOR_SIZE == 0);
-	//ASSERT(Length % SECTOR_SIZE == 0);
 	origBuf = Buf;
 	origLen = Length;
 
@@ -145,7 +143,7 @@ BOOLEAN QueryAndCopyFromCachePool (
 		if (QueryPoolByIndex(CachePool, Offset-1, ppInternalBlocks+0) == FALSE)
 			goto l_error;
 		else
-			_copy_data(0, BLOCK_SIZE-front_skip, front_skip);
+			_copy_data(0, BLOCK_SIZE-front_skip, front_skip>origLen?origLen:front_skip);
 	}
 
 	// Query Cache Pool If it is Fully Matched
@@ -225,7 +223,7 @@ VOID UpdataCachePool(
 	PUCHAR Buf, LONGLONG Offset, ULONG Length,
 	BOOLEAN Type
 #ifdef READ_VERIFY
-	,PDEVICE_OBJECT PhysicalDeviceObject
+	,PDEVICE_OBJECT LowerDeviceObject
 	,ULONG DiskNumber
 	,ULONG PartitionNumber
 #endif
@@ -239,10 +237,10 @@ VOID UpdataCachePool(
 	Offset /= BLOCK_SIZE;
 	Length /= BLOCK_SIZE;
 
-	if (Length == 0)
-		return;
 	if (Type == _READ_)
 	{
+		if (front_broken == TRUE)
+			Buf += front_skip;
 		for (i = 0; i < Length; i++)
 		{
 			// Still have empty cache block
@@ -261,7 +259,7 @@ VOID UpdataCachePool(
 					readOffset.QuadPart = BLOCK_SIZE * pBlock->Index;
 					Status = IoDoRWRequestSync (
 						IRP_MJ_READ,
-						PhysicalDeviceObject,
+						LowerDeviceObject,
 						Data,
 						BLOCK_SIZE,
 						&readOffset
@@ -289,13 +287,15 @@ VOID UpdataCachePool(
 		// Pool is Full
 		while (i < Length)
 		{
-			FindBlockToReplace(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
+			// Not to duplicate
+			if(QueryPoolByIndex(CachePool, Offset+i, &pBlock) == FALSE)
+				FindBlockToReplace(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
 			i++;
 		}
 	}
 	else /* Write */
 	{
-		if(front_broken)
+		if(front_broken == TRUE)
 			DeleteOneBlockFromPool(CachePool, Offset-1);
 		for (i = 0; i < Length; i++)
 		{

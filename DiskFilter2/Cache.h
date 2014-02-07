@@ -8,7 +8,7 @@
 #define _READ_								TRUE
 #define _WRITE_								FALSE
 #define SECTOR_SIZE							512
-#define NSB									3		/* Number Sectors per Block */
+#define NSB									4		/* Number Sectors per Block */
 #define BLOCK_SIZE							(SECTOR_SIZE*NSB)
 #define CACHE_POOL_SIZE						50		/* MB */
 
@@ -49,7 +49,7 @@ VOID
 		ULONG Length,
 		BOOLEAN Type
 	#ifdef READ_VERIFY
-		,PDEVICE_OBJECT PhysicalDeviceObject
+		,PDEVICE_OBJECT LowerDeviceObject
 		,ULONG DiskNumber
 		,ULONG PartitionNumber
 	#endif
@@ -63,7 +63,6 @@ VOID
 			end_cut=0;									\
 			if(Off%BLOCK_SIZE!=0)						\
 			{											\
-				ULONG Skip;								\
 				front_broken=TRUE;						\
 				front_skip=BLOCK_SIZE-(Off%BLOCK_SIZE);	\
 				Off+=front_skip;						\

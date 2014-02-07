@@ -147,7 +147,7 @@ VOID DF_ReadWriteThread(PVOID Context)
 										SysBuf, Offset,
 										Length, _READ_
 									#ifdef READ_VERIFY
-										,DevExt->PhysicalDeviceObject
+										,DevExt->LowerDeviceObject
 										,DevExt->DiskNumber
 										,DevExt->PartitionNumber
 									#endif
@@ -176,7 +176,7 @@ VOID DF_ReadWriteThread(PVOID Context)
 									SysBuf, Offset,
 									Length, _WRITE_
 								#ifdef READ_VERIFY
-									,DevExt->PhysicalDeviceObject
+									,DevExt->LowerDeviceObject
 									,DevExt->DiskNumber
 									,DevExt->PartitionNumber
 								#endif

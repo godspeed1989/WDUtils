@@ -196,7 +196,7 @@ VOID StartDevice(PDEVICE_OBJECT DeviceObject)
 		}
 		KdPrint(("\n"));
 		// TESTING..................................................................................
-	#if 0
+	#if 1
 		if (DevExt->DiskNumber == 0 && DevExt->PartitionNumber == 1)
 			DevExt->bIsProtected = TRUE;
 	#endif
