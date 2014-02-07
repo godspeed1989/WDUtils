@@ -8,14 +8,16 @@
 #define _READ_								TRUE
 #define _WRITE_								FALSE
 #define SECTOR_SIZE							512
-#define CACHE_POOL_SIZE						(2048*50)
+#define NSB									3		/* Number Sectors per Block */
+#define BLOCK_SIZE							(SECTOR_SIZE*NSB)
+#define CACHE_POOL_SIZE						50		/* MB */
 
 typedef struct _CACHE_BLOCK
 {
 	BOOLEAN				Accessed;
 	BOOLEAN				Modified;
 	LONGLONG			Index;
-	UCHAR				Data[SECTOR_SIZE];
+	UCHAR				Data[BLOCK_SIZE];
 }CACHE_BLOCK, *PCACHE_BLOCK;
 
 typedef struct _CACHE_POOL
@@ -45,6 +47,31 @@ VOID
 		PUCHAR Buf,
 		LONGLONG Offset,
 		ULONG Length,
-		BOOLEAN Type,
-		PDEVICE_OBJECT  PhysicalDeviceObject
+		BOOLEAN Type
+	#ifdef READ_VERIFY
+		,PDEVICE_OBJECT PhysicalDeviceObject
+		,ULONG DiskNumber
+		,ULONG PartitionNumber
+	#endif
 	);
+
+#define detect_broken(Off,Len,front_broken,end_broken,front_skip,end_cut)	\
+		do{												\
+			front_broken=FALSE;							\
+			end_broken=FALSE;							\
+			front_skip=0;								\
+			end_cut=0;									\
+			if(Off%BLOCK_SIZE!=0)						\
+			{											\
+				ULONG Skip;								\
+				front_broken=TRUE;						\
+				front_skip=BLOCK_SIZE-(Off%BLOCK_SIZE);	\
+				Off+=front_skip;						\
+				Len=(Len>front_skip)?(Len-front_skip):0;\
+			}											\
+			if(Len%BLOCK_SIZE!=0)						\
+			{											\
+				end_broken=TRUE;						\
+				end_cut=Len%BLOCK_SIZE;					\
+			}											\
+		}while(0);

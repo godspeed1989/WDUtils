@@ -1,5 +1,6 @@
 #include "Utils.h"
 #include "DiskFilter.h"
+#include "md5.h"
 #include <ntstrsafe.h>
 
 IO_COMPLETION_ROUTINE QueryCompletion;
@@ -348,4 +349,16 @@ DF_GetDiskDeviceObjectPointer(
 
 	RtlFreeUnicodeString(&ustr);
 	return status;
+}
+
+VOID
+DF_CalMD5(PVOID buf, ULONG len, UCHAR digest[16])
+{
+	md5_state_t state;
+	md5_byte_t* _digest;
+
+	_digest = digest;
+	md5_init(&state);
+	md5_append(&state, buf, len);
+	md5_finish(&state, _digest);
 }

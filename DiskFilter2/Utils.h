@@ -28,15 +28,19 @@ NTSTATUS IoDoIoctl (
 NTSTATUS DF_QueryDeviceInfo (
 		PDEVICE_OBJECT DeviceObject
 	);
-NTSTATUS DF_GetDiskDeviceObjectPointer(
-	ULONG			DiskIndex,
-	ULONG			PartitionIndex,
-	PFILE_OBJECT	*FileObject,
-	PDEVICE_OBJECT	*DeviceObject
+NTSTATUS DF_GetDiskDeviceObjectPointer (
+		ULONG			DiskIndex,
+		ULONG			PartitionIndex,
+		PFILE_OBJECT	*FileObject,
+		PDEVICE_OBJECT	*DeviceObject
 	);
-
-VOID StartDevice(PDEVICE_OBJECT DeviceObject);
-VOID StopDevice(PDEVICE_OBJECT DeviceObject);
+VOID DF_CalMD5 (
+		PVOID buf,
+		ULONG len,
+		UCHAR digest[16]
+	);
+VOID StartDevice (PDEVICE_OBJECT DeviceObject);
+VOID StopDevice (PDEVICE_OBJECT DeviceObject);
 
 #pragma pack(1)
 typedef struct _DP_FAT16_BOOT_SECTOR

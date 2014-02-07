@@ -1,9 +1,10 @@
 #include "Cache.h"
+#include "Utils.h"
 
 BOOLEAN InitCachePool(PCACHE_POOL CachePool)
 {
 	CachePool->Used = 0;
-	CachePool->Size = CACHE_POOL_SIZE;
+	CachePool->Size = (CACHE_POOL_SIZE << 20)/(512);
 	CachePool->bpt_root = NULL;
 	return TRUE;
 }
@@ -77,7 +78,7 @@ static BOOLEAN AddOneBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 		RtlCopyMemory (
 			pBlock->Data,
 			Data,
-			SECTOR_SIZE
+			BLOCK_SIZE
 		);
 		CachePool->Used++;
 		// Insert into bpt
@@ -107,24 +108,47 @@ BOOLEAN QueryAndCopyFromCachePool (
 	PCACHE_POOL CachePool, PUCHAR Buf, LONGLONG Offset, ULONG Length
 )
 {
-	ULONG i;
+	PUCHAR origBuf;
+	ULONG i, front_skip, end_cut, origLen;
 	BOOLEAN Ret = FALSE;
+	BOOLEAN front_broken, end_broken;
 	PCACHE_BLOCK *ppInternalBlocks = NULL;
 
-	ASSERT(Offset % SECTOR_SIZE == 0);
-	ASSERT(Length % SECTOR_SIZE == 0);
+	//ASSERT(Offset % SECTOR_SIZE == 0);
+	//ASSERT(Length % SECTOR_SIZE == 0);
+	origBuf = Buf;
+	origLen = Length;
 
-	Offset /= SECTOR_SIZE;
-	Length /= SECTOR_SIZE;
+	detect_broken(Offset, Length, front_broken, end_broken, front_skip, end_cut);
+	Offset /= BLOCK_SIZE;
+	Length /= BLOCK_SIZE;
 
 	ppInternalBlocks = (PCACHE_BLOCK*) ExAllocatePoolWithTag (
 		NonPagedPool,
-		(SIZE_T)(Length * sizeof(PCACHE_BLOCK)),
+		(SIZE_T)((Length+1) * sizeof(PCACHE_BLOCK)),
 		CACHE_POOL_TAG
 	);
 	if (ppInternalBlocks == NULL)
 		goto l_error;
-	// Query Cache Pool If is Fully Matched
+
+#define _copy_data(bi,off,len) 					\
+		RtlCopyMemory (							\
+			Buf,								\
+			ppInternalBlocks[bi]->Data+off,		\
+			len									\
+		);										\
+		ppInternalBlocks[bi]->Accessed = TRUE;	\
+		Buf += len;
+
+	if (front_broken == TRUE)
+	{
+		if (QueryPoolByIndex(CachePool, Offset-1, ppInternalBlocks+0) == FALSE)
+			goto l_error;
+		else
+			_copy_data(0, BLOCK_SIZE-front_skip, front_skip);
+	}
+
+	// Query Cache Pool If it is Fully Matched
 	for (i = 0; i < Length; i++)
 	{
 		if (QueryPoolByIndex(CachePool, Offset+i, ppInternalBlocks+i) == FALSE)
@@ -133,13 +157,18 @@ BOOLEAN QueryAndCopyFromCachePool (
 	// Copy From Cache Pool
 	for (i = 0; i < Length; i++)
 	{
-		RtlCopyMemory (
-			Buf + i * SECTOR_SIZE,
-			ppInternalBlocks[i]->Data,
-			SECTOR_SIZE
-		);
-		ppInternalBlocks[i]->Accessed = TRUE;
+		_copy_data(i, 0, BLOCK_SIZE);
 	}
+
+	if (end_broken == TRUE)
+	{
+		if (QueryPoolByIndex(CachePool, Offset+Length, ppInternalBlocks+0) == FALSE)
+			goto l_error;
+		else
+			_copy_data(0, 0, end_cut);
+	}
+
+	ASSERT(Buf - origBuf == origLen);
 	Ret = TRUE;
 l_error:
 	if (ppInternalBlocks != NULL)
@@ -182,42 +211,36 @@ found:
 		RtlCopyMemory (
 			pBlock->Data,
 			Data,
-			SECTOR_SIZE
+			BLOCK_SIZE
 		);
 		CachePool->bpt_root = Insert(CachePool->bpt_root, Index, pBlock);
 	}
 }
 
-#ifdef READ_VERIFY
-#include "Utils.h"
-#endif
 /**
  * Update Cache Pool with Buffer
  */
 VOID UpdataCachePool(
-	PCACHE_POOL CachePool, PUCHAR Buf, LONGLONG Offset, ULONG Length,
-	BOOLEAN Type, PDEVICE_OBJECT PhysicalDeviceObject
+	PCACHE_POOL CachePool,
+	PUCHAR Buf, LONGLONG Offset, ULONG Length,
+	BOOLEAN Type
+#ifdef READ_VERIFY
+	,PDEVICE_OBJECT PhysicalDeviceObject
+	,ULONG DiskNumber
+	,ULONG PartitionNumber
+#endif
 )
 {
-	ULONG i, Skip;
+	ULONG i, front_skip, end_cut;
 	PCACHE_BLOCK pBlock;
 	BOOLEAN front_broken, end_broken;
 
-	front_broken = FALSE;
-	end_broken = FALSE;
-	if (Offset % SECTOR_SIZE != 0)
-	{
-		front_broken = TRUE;
-		Skip = SECTOR_SIZE - (Offset % SECTOR_SIZE);
-		Offset +=  Skip;
-		Length  = (Length > Skip) ? (Length - Skip) : 0;
-	}
-	if (Length % SECTOR_SIZE != 0)
-		end_broken = TRUE;
+	detect_broken(Offset, Length, front_broken, end_broken, front_skip, end_cut);
+	Offset /= BLOCK_SIZE;
+	Length /= BLOCK_SIZE;
 
-	Offset /= SECTOR_SIZE;
-	Length /= SECTOR_SIZE;
-
+	if (Length == 0)
+		return;
 	if (Type == _READ_)
 	{
 		for (i = 0; i < Length; i++)
@@ -227,34 +250,35 @@ VOID UpdataCachePool(
 			{
 				// Not to duplicate
 				if(QueryPoolByIndex(CachePool, Offset+i, &pBlock) == FALSE)
-					AddOneBlockToPool(CachePool, Offset+i, Buf+i*SECTOR_SIZE);
+					AddOneBlockToPool(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
 				else
 				{
 				#ifdef READ_VERIFY
 					NTSTATUS Status;
 					ULONG matched1, matched2;
 					LARGE_INTEGER readOffset;
-					UCHAR Data[SECTOR_SIZE];
-					readOffset.QuadPart = SECTOR_SIZE * pBlock->Index;
+					UCHAR Data[BLOCK_SIZE];
+					readOffset.QuadPart = BLOCK_SIZE * pBlock->Index;
 					Status = IoDoRWRequestSync (
 						IRP_MJ_READ,
 						PhysicalDeviceObject,
 						Data,
-						SECTOR_SIZE,
+						BLOCK_SIZE,
 						&readOffset
 					);
 					if (NT_SUCCESS(Status))
 					{
-						matched1 = RtlCompareMemory(Data, pBlock->Data, SECTOR_SIZE);
-						matched2 = RtlCompareMemory(Data, Buf+i*SECTOR_SIZE, SECTOR_SIZE);
+						matched1 = RtlCompareMemory(Data, pBlock->Data, BLOCK_SIZE);
+						matched2 = RtlCompareMemory(Data, Buf+i*BLOCK_SIZE, BLOCK_SIZE);
 					}
 					else
 					{
 						matched1 = 9999999;
 						matched2 = 9999999;
 					}
-					if (matched1 != SECTOR_SIZE || matched2 != SECTOR_SIZE)
-						DbgPrint("XX--(%d)<-(%d)->(%d)--\n", matched1, SECTOR_SIZE, matched2);
+					if (matched1 != BLOCK_SIZE || matched2 != BLOCK_SIZE)
+						DbgPrint("XX:%d-%d:--(%d)<-(%d)->(%d)--\n",
+							DiskNumber, PartitionNumber, matched1, BLOCK_SIZE, matched2);
 				#endif
 					pBlock->Accessed = TRUE;
 				}
@@ -265,7 +289,7 @@ VOID UpdataCachePool(
 		// Pool is Full
 		while (i < Length)
 		{
-			FindBlockToReplace(CachePool, Offset+i, Buf+i*SECTOR_SIZE);
+			FindBlockToReplace(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
 			i++;
 		}
 	}
@@ -283,25 +307,25 @@ VOID UpdataCachePool(
 				// Update
 				RtlCopyMemory (
 					pBlock->Data,
-					Buf + i * SECTOR_SIZE,
-					SECTOR_SIZE
+					Buf + i * BLOCK_SIZE,
+					BLOCK_SIZE
 				);
 				pBlock->Modified = TRUE;
 				continue;
 			}
 			if (IsFull(CachePool) == FALSE)
 			{
-				AddOneBlockToPool(CachePool, Offset+i, Buf+i*SECTOR_SIZE);
+				AddOneBlockToPool(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
 				continue;
 			}
 			else
 			{
-				FindBlockToReplace(CachePool, Offset+i, Buf+i*SECTOR_SIZE);
+				FindBlockToReplace(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
 				continue;
 			}
 		#endif
 		}
 		if (end_broken == TRUE)
-			DeleteOneBlockFromPool(CachePool, Offset+i);
+			DeleteOneBlockFromPool(CachePool, Offset+Length);
 	}
 }
