@@ -8,7 +8,7 @@
 #define _READ_								TRUE
 #define _WRITE_								FALSE
 #define SECTOR_SIZE							512
-#define NSB									4		/* Number Sectors per Block */
+#define NSB									1		/* Number Sectors per Block */
 #define BLOCK_SIZE							(SECTOR_SIZE*NSB)
 #define CACHE_POOL_SIZE						50		/* MB */
 

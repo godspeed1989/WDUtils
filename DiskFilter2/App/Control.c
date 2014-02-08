@@ -4,7 +4,13 @@
 #include <stdlib.h>
 #include "../DiskFilterIoctl.h"
 
+#if _MSC_VER
+#define snprintf _snprintf
+#endif
+
 HANDLE m_hCommDevice;
+ULONG sysDiskNumber;
+ULONG sysPartitionNumber;
 
 int OpenDF()
 {
@@ -55,6 +61,8 @@ struct command options[] =
 
 #define BUFLEN 32
 
+DWORD GetSystemVolumeNum();
+
 int main(int argc, char *argv[])
 {
 	DWORD dwOutBytes;
@@ -62,6 +70,9 @@ int main(int argc, char *argv[])
 	ULONG32 oBuffer[BUFLEN] = {0};
 	int i;
 	char istr[256];
+
+	if (GetSystemVolumeNum())
+		return -1;
 
 	if (!OpenDF())
 	{
@@ -110,6 +121,8 @@ int main(int argc, char *argv[])
 					{
 						printf("Input DiskNumber PartitionNumber\n");
 						scanf("%d%d", &iBuffer[0], &iBuffer[1]);
+						if (iBuffer[0] == sysDiskNumber && iBuffer[1] == sysPartitionNumber)
+							printf("Highly recommend not cache system volume!\n");
 						printf("%s disk(%d) partition(%d)\n", istr, iBuffer[0], iBuffer[1]);
 					}
 					DeviceIoControl (
@@ -137,4 +150,64 @@ int main(int argc, char *argv[])
 ERROUT:
 	CloseDF();
 	return 0;
+}
+
+DWORD GetSystemVolumeNum()
+{
+	HANDLE hDrv;
+	BOOL bSuccess;
+	DWORD lpBytesReturned;
+	PARTITION_INFORMATION pinfo;
+	VOLUME_DISK_EXTENTS VolumeDiskExt;
+	TCHAR dir[MAX_PATH], letter;
+
+	if (GetSystemDirectory(dir, MAX_PATH))
+		letter = dir[0];
+	else
+	{
+		printf("%s: Can not Get System Directory\n", __FUNCTION__);
+		goto l_error;
+	}
+	snprintf(dir, MAX_PATH, "\\\\.\\%c:", letter);
+
+	hDrv = CreateFile ( dir, GENERIC_READ,
+						FILE_SHARE_READ | FILE_SHARE_WRITE,
+						NULL, OPEN_EXISTING, 0, NULL );
+	if(hDrv == INVALID_HANDLE_VALUE)
+	{
+		printf("%s: Can not open the Driver %c:\n", __FUNCTION__, letter);
+		goto l_error;
+	}
+
+	bSuccess = DeviceIoControl (
+		hDrv, IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS,
+		NULL, 0, (LPVOID) &VolumeDiskExt, (DWORD) sizeof(VOLUME_DISK_EXTENTS),
+		(LPDWORD) &lpBytesReturned, (LPOVERLAPPED) NULL
+	);
+	if(!bSuccess)
+	{
+		printf("%s: ioctl error0 %lu\n", __FUNCTION__, GetLastError());
+		goto l_error;
+	}
+
+	bSuccess = DeviceIoControl (
+		hDrv, IOCTL_DISK_GET_PARTITION_INFO,
+		NULL, 0, (LPVOID) &pinfo, (DWORD) sizeof(PARTITION_INFORMATION),
+		(LPDWORD) &lpBytesReturned, (LPOVERLAPPED) NULL
+	);
+	if(!bSuccess)
+	{
+		printf("%s: ioctl error1 %lu\n", __FUNCTION__, GetLastError());
+		goto l_error;
+	}
+
+	sysDiskNumber = VolumeDiskExt.Extents[0].DiskNumber;
+	sysPartitionNumber = pinfo.PartitionNumber;
+
+	//printf("%lu\n", sysDiskNumber);
+	//printf("%lu\n", sysPartitionNumber);
+	return 0;
+l_error:
+	CloseHandle(hDrv);
+	return GetLastError();
 }
