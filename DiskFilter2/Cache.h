@@ -12,12 +12,20 @@
 #define BLOCK_SIZE							(SECTOR_SIZE*NSB)
 #define CACHE_POOL_SIZE						50		/* MB */
 
+#define CACHE_DATA_T		PUCHAR
+#define CACHE_DATA_ALLOC()	ExAllocatePoolWithTag(NonPagedPool, (SIZE_T)BLOCK_SIZE, CACHE_POOL_TAG);
+#define CACHE_DATA_FREE(p)	ExFreePoolWithTag(p, CACHE_POOL_TAG);
+#define CACHE_DATA_WRITE(cdata,off,p,len) \
+			RtlCopyMemory(cdata+off, p, len);
+#define CACHE_DATA_READ(p,cdata,off,len) \
+			RtlCopyMemory(p, cdata+off, len);
+
 typedef struct _CACHE_BLOCK
 {
 	BOOLEAN				Accessed;
 	BOOLEAN				Modified;
 	LONGLONG			Index;
-	UCHAR				Data[BLOCK_SIZE];
+	CACHE_DATA_T		Data;
 }CACHE_BLOCK, *PCACHE_BLOCK;
 
 typedef struct _CACHE_POOL

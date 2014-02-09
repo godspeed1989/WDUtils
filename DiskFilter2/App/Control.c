@@ -204,8 +204,6 @@ DWORD GetSystemVolumeNum()
 	sysDiskNumber = VolumeDiskExt.Extents[0].DiskNumber;
 	sysPartitionNumber = pinfo.PartitionNumber;
 
-	//printf("%lu\n", sysDiskNumber);
-	//printf("%lu\n", sysPartitionNumber);
 	return 0;
 l_error:
 	CloseHandle(hDrv);

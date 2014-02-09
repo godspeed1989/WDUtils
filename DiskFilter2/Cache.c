@@ -11,7 +11,9 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool)
 
 void Free_Record( record * r )
 {
-	ExFreePoolWithTag(r, CACHE_POOL_TAG);
+	PCACHE_BLOCK p = (PCACHE_BLOCK)r;
+	CACHE_DATA_FREE(p->Data);
+	ExFreePoolWithTag(p, CACHE_POOL_TAG);
 }
 
 VOID DestroyCachePool(PCACHE_POOL CachePool)
@@ -59,6 +61,7 @@ static PCACHE_BLOCK GetFreeBlock(PCACHE_POOL CachePool)
 						(SIZE_T)sizeof(CACHE_BLOCK),
 						CACHE_POOL_TAG
 					);
+		pBlock->Data = CACHE_DATA_ALLOC();
 		return pBlock;
 	}
 	return NULL;
@@ -75,8 +78,8 @@ static BOOLEAN AddOneBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 		pBlock->Accessed = FALSE;
 		pBlock->Modified = FALSE;
 		pBlock->Index = Index;
-		RtlCopyMemory (
-			pBlock->Data,
+		CACHE_DATA_WRITE (
+			pBlock->Data, 0,
 			Data,
 			BLOCK_SIZE
 		);
@@ -130,9 +133,9 @@ BOOLEAN QueryAndCopyFromCachePool (
 		goto l_error;
 
 #define _copy_data(bi,off,len) 					\
-		RtlCopyMemory (							\
+		CACHE_DATA_READ (						\
 			Buf,								\
-			ppInternalBlocks[bi]->Data+off,		\
+			ppInternalBlocks[bi]->Data, off,	\
 			len									\
 		);										\
 		ppInternalBlocks[bi]->Accessed = TRUE;	\
@@ -206,8 +209,8 @@ found:
 		pBlock->Accessed = FALSE;
 		pBlock->Modified = FALSE;
 		pBlock->Index = Index;
-		RtlCopyMemory (
-			pBlock->Data,
+		CACHE_DATA_WRITE (
+			pBlock->Data, 0,
 			Data,
 			BLOCK_SIZE
 		);
@@ -305,8 +308,8 @@ VOID UpdataCachePool(
 			if(QueryPoolByIndex(CachePool, Offset+i, &pBlock) == TRUE)
 			{
 				// Update
-				RtlCopyMemory (
-					pBlock->Data,
+				CACHE_DATA_WRITE (
+					pBlock->Data, 0,
 					Buf + i * BLOCK_SIZE,
 					BLOCK_SIZE
 				);
