@@ -82,3 +82,32 @@ VOID
 				end_cut=Len%BLOCK_SIZE;					\
 			}											\
 		}while(0);
+
+#define DO_READ_VERIFY(pBlock,Buffer)	\
+		do{																		\
+			NTSTATUS Status;													\
+			ULONG matched1, matched2;											\
+			LARGE_INTEGER readOffset;											\
+			UCHAR Data[BLOCK_SIZE];												\
+			readOffset.QuadPart = BLOCK_SIZE * pBlock->Index;					\
+			Status = IoDoRWRequestSync (										\
+						IRP_MJ_READ,											\
+						LowerDeviceObject,										\
+						Data,													\
+						BLOCK_SIZE,												\
+						&readOffset												\
+					);															\
+			if (NT_SUCCESS(Status))												\
+			{																	\
+				matched1 = RtlCompareMemory(Data, pBlock->Data, BLOCK_SIZE);	\
+				matched2 = RtlCompareMemory(Data, Buffer, BLOCK_SIZE);			\
+			}																	\
+			else																\
+			{																	\
+				matched1 = 9999999;												\
+				matched2 = 9999999;												\
+			}																	\
+			if (matched1 != BLOCK_SIZE || matched2 != BLOCK_SIZE)				\
+				DbgPrint("XX:%d-%d:--(%d)<-(%d)->(%d)--\n",						\
+				DiskNumber, PartitionNumber, matched1, BLOCK_SIZE, matched2);	\
+		}while(0);

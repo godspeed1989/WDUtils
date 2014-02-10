@@ -146,7 +146,7 @@ BOOLEAN QueryAndCopyFromCachePool (
 		if (QueryPoolByIndex(CachePool, Offset-1, ppInternalBlocks+0) == FALSE)
 			goto l_error;
 		else
-			_copy_data(0, BLOCK_SIZE-front_skip, front_skip>origLen?origLen:front_skip);
+			_copy_data(0, BLOCK_SIZE-front_skip, (front_skip>origLen)?origLen:front_skip);
 	}
 
 	// Query Cache Pool If it is Fully Matched
@@ -255,6 +255,8 @@ VOID UpdataCachePool(
 				else
 				{
 				#ifdef READ_VERIFY
+					DO_READ_VERIFY(pBlock, Buf+i*BLOCK_SIZE);
+				/*
 					NTSTATUS Status;
 					ULONG matched1, matched2;
 					LARGE_INTEGER readOffset;
@@ -279,7 +281,7 @@ VOID UpdataCachePool(
 					}
 					if (matched1 != BLOCK_SIZE || matched2 != BLOCK_SIZE)
 						DbgPrint("XX:%d-%d:--(%d)<-(%d)->(%d)--\n",
-							DiskNumber, PartitionNumber, matched1, BLOCK_SIZE, matched2);
+							DiskNumber, PartitionNumber, matched1, BLOCK_SIZE, matched2);*/
 				#endif
 					pBlock->Accessed = TRUE;
 				}
@@ -293,6 +295,12 @@ VOID UpdataCachePool(
 			// Not to duplicate
 			if(QueryPoolByIndex(CachePool, Offset+i, &pBlock) == FALSE)
 				FindBlockToReplace(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
+			else
+			{
+			#ifdef READ_VERIFY
+				DO_READ_VERIFY(pBlock, Buf+i*BLOCK_SIZE);
+			#endif
+			}
 			i++;
 		}
 	}
