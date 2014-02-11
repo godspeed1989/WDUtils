@@ -31,7 +31,7 @@ DF_DispatchPower(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		DBG_PRINT(DBG_TRACE_OPS, ("SystemPowerState...\n"));
 		if (PowerSystemShutdown == IrpSp->Parameters.Power.State.SystemState)
 		{
-			KdPrint(("System is shutting down...\n"));
+			DBG_PRINT(DBG_TRACE_OPS, ("System is shutting down...\n"));
 			// ... Flush back Cache
 		}
 	}
@@ -128,7 +128,7 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 					DevExt->DiskNumber == ((ULONG32*)InputBuffer)[0] &&
 					DevExt->PartitionNumber == ((ULONG32*)InputBuffer)[1])
 				{
-					KdPrint(("%s Filter on disk(%u) partition(%u)\n", Type?"Start":"Stop",
+					DBG_PRINT(DBG_TRACE_OPS, ("%s Filter on disk(%u) partition(%u)\n", Type?"Start":"Stop",
 						((ULONG32*)InputBuffer)[0], ((ULONG32*)InputBuffer)[1]));
 					if (Type == FALSE)
 					{
@@ -161,7 +161,7 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 					DevExt->DiskNumber == ((ULONG32*)InputBuffer)[0] &&
 					DevExt->PartitionNumber == ((ULONG32*)InputBuffer)[1])
 				{
-					KdPrint(("On disk(%u) partition(%u)\n", DevExt->DiskNumber, DevExt->PartitionNumber));
+					DBG_PRINT(DBG_TRACE_OPS, ("On disk(%u) partition(%u)\n", DevExt->DiskNumber, DevExt->PartitionNumber));
 					if (Type && OutputLength >= 5 * sizeof(ULONG32))
 					{
 						((ULONG32*)OutputBuffer)[0] = DevExt->CacheHit;
@@ -187,13 +187,19 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 			return Irp->IoStatus.Status;
 		// Setup Output
 		case IOCTL_DF_QUIET:
-			g_TraceFlags = 0;
 			DBG_PRINT(DBG_TRACE_OPS, ("%s: Quite All Output\n", __FUNCTION__));
+			g_TraceFlags = 0;
 			COMPLETE_IRP(Irp, STATUS_SUCCESS);
 			return Irp->IoStatus.Status;
 		case IOCTL_DF_VERBOSE:
 			g_TraceFlags = -1;
 			DBG_PRINT(DBG_TRACE_OPS, ("%s: Verbose All Output\n", __FUNCTION__));
+			COMPLETE_IRP(Irp, STATUS_SUCCESS);
+			return Irp->IoStatus.Status;
+		// Setup Data Verify
+		case IOCTL_DF_VERIFY:
+			g_bDataVerify = (g_bDataVerify==TRUE)?FALSE:TRUE;
+			DBG_PRINT(DBG_TRACE_OPS, ("%s: %s Data Verify\n", __FUNCTION__, g_bDataVerify?"Start":"Stop"));
 			COMPLETE_IRP(Irp, STATUS_SUCCESS);
 			return Irp->IoStatus.Status;
 		// Unknown Ioctl

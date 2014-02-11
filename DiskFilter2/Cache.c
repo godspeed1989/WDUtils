@@ -109,6 +109,11 @@ static VOID DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
  */
 BOOLEAN QueryAndCopyFromCachePool (
 	PCACHE_POOL CachePool, PUCHAR Buf, LONGLONG Offset, ULONG Length
+#ifdef READ_VERIFY
+	,PDEVICE_OBJECT LowerDeviceObject
+	,ULONG DiskNumber
+	,ULONG PartitionNumber
+#endif
 )
 {
 	PUCHAR origBuf;
@@ -146,7 +151,12 @@ BOOLEAN QueryAndCopyFromCachePool (
 		if (QueryPoolByIndex(CachePool, Offset-1, ppInternalBlocks+0) == FALSE)
 			goto l_error;
 		else
+		{
 			_copy_data(0, BLOCK_SIZE-front_skip, (front_skip>origLen)?origLen:front_skip);
+		#ifdef READ_VERIFY
+			DO_READ_VERIFY(ppInternalBlocks[0], ppInternalBlocks[0]->Data);
+		#endif
+		}
 	}
 
 	// Query Cache Pool If it is Fully Matched
@@ -159,6 +169,9 @@ BOOLEAN QueryAndCopyFromCachePool (
 	for (i = 0; i < Length; i++)
 	{
 		_copy_data(i, 0, BLOCK_SIZE);
+	#ifdef READ_VERIFY
+		DO_READ_VERIFY(ppInternalBlocks[i], ppInternalBlocks[i]->Data);
+	#endif
 	}
 
 	if (end_broken == TRUE)
@@ -166,7 +179,12 @@ BOOLEAN QueryAndCopyFromCachePool (
 		if (QueryPoolByIndex(CachePool, Offset+Length, ppInternalBlocks+0) == FALSE)
 			goto l_error;
 		else
+		{
 			_copy_data(0, 0, end_cut);
+		#ifdef READ_VERIFY
+			DO_READ_VERIFY(ppInternalBlocks[0], ppInternalBlocks[0]->Data);
+		#endif
+		}
 	}
 
 	ASSERT(Buf - origBuf == origLen);

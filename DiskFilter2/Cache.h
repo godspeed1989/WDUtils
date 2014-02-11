@@ -47,6 +47,11 @@ BOOLEAN
 		PUCHAR Buf,
 		LONGLONG Offset,
 		ULONG Length
+	#ifdef READ_VERIFY
+		,PDEVICE_OBJECT LowerDeviceObject
+		,ULONG DiskNumber
+		,ULONG PartitionNumber
+	#endif
 	);
 
 VOID
@@ -84,7 +89,7 @@ VOID
 		}while(0);
 
 #define DO_READ_VERIFY(pBlock,Buffer)	\
-		do{																		\
+		if(g_bDataVerify){														\
 			NTSTATUS Status;													\
 			ULONG matched1, matched2;											\
 			LARGE_INTEGER readOffset;											\
@@ -108,6 +113,6 @@ VOID
 				matched2 = 9999999;												\
 			}																	\
 			if (matched1 != BLOCK_SIZE || matched2 != BLOCK_SIZE)				\
-				DbgPrint("XX:%d-%d:--(%d)<-(%d)->(%d)--\n",						\
+				DbgPrint("%s: %d-%d: --(%d)<-(%d)->(%d)--\n", __FUNCTION__,		\
 				DiskNumber, PartitionNumber, matched1, BLOCK_SIZE, matched2);	\
-		}while(0);
+		}

@@ -127,7 +127,13 @@ VOID DF_ReadWriteThread(PVOID Context)
 						&DevExt->CachePool,
 						SysBuf,
 						Offset,
-						Length) == TRUE)
+						Length
+					#ifdef READ_VERIFY
+						,DevExt->LowerDeviceObject
+						,DevExt->DiskNumber
+						,DevExt->PartitionNumber
+					#endif
+						) == TRUE)
 				{
 					DBG_PRINT(DBG_TRACE_OPS, ("hit:%u-%u: off(%I64d) len(%d)\n", DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
 					DevExt->CacheHit++;

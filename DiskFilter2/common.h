@@ -44,3 +44,8 @@
 		LONGLONG QuadPart;
 	} LARGE_INTEGER, *PLARGE_INTEGER;
 #endif
+
+extern ULONG				g_TraceFlags;
+extern PDEVICE_OBJECT		g_pDeviceObject;
+extern PDRIVER_OBJECT		g_pDriverObject;
+extern BOOLEAN				g_bDataVerify;

@@ -6,6 +6,7 @@ extern PULONG InitSafeBootMode;
 ULONG				g_TraceFlags;
 PDEVICE_OBJECT		g_pDeviceObject;
 PDRIVER_OBJECT		g_pDriverObject;
+BOOLEAN				g_bDataVerify;
 
 NTSTATUS DF_CreateControlDevice(PDRIVER_OBJECT pDriverObject);
 
@@ -22,6 +23,7 @@ DriverEntry(PDRIVER_OBJECT DriverObject,
 
 	g_TraceFlags = DBG_TRACE_ROUTINES | DBG_TRACE_OPS;
 	g_pDriverObject = DriverObject;
+	g_bDataVerify = TRUE;
 	for (i = 0; i<=IRP_MJ_MAXIMUM_FUNCTION; ++i)
 	{
 		DriverObject->MajorFunction[i] = DF_DispatchDefault;

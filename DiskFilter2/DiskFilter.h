@@ -2,10 +2,6 @@
 
 #include "Structs.h"
 
-extern ULONG				g_TraceFlags;
-extern PDEVICE_OBJECT		g_pDeviceObject;
-extern PDRIVER_OBJECT		g_pDriverObject;
-
 DRIVER_INITIALIZE			DriverEntry;
 DRIVER_ADD_DEVICE			DF_AddDevice;
 DRIVER_REINITIALIZE			DF_DriverReinitializeRoutine;

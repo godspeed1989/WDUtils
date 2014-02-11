@@ -55,6 +55,7 @@ struct command options[] =
 	{"clear", "Clear Statistic of One Volume", IOCTL_DF_CLEAR_STAT},
 	{"quiet", "Quite All Output", IOCTL_DF_QUIET},
 	{"verbose", "Verbose All Output", IOCTL_DF_VERBOSE},
+	{"verify", "Verify Cache Pool Data", IOCTL_DF_VERIFY},
 	{"q", "Quit", 0},
 	{0, 0, 0}
 };
