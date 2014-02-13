@@ -25,13 +25,13 @@ node * Make_Node( void )
 {
 	node * new_node;
 
-	new_node = (node*)MALLOC(sizeof(node));
+	new_node = (node*)BPT_MALLOC(sizeof(node));
 	assert(new_node);
 	// keys: order - 1
-	new_node->keys = (KEY_T*)MALLOC( (order - 1) * sizeof(KEY_T) );
+	new_node->keys = (KEY_T*)BPT_MALLOC( (order - 1) * sizeof(KEY_T) );
 	assert(new_node->keys);
 	// pointers: order
-	new_node->pointers = (void*)MALLOC( order * sizeof(void *) );
+	new_node->pointers = (void*)BPT_MALLOC( order * sizeof(void *) );
 	assert(new_node->pointers);
 
 	new_node->is_leaf = FALSE;
@@ -47,9 +47,9 @@ void Free_Node( node * n )
 {
 	if(n)
 	{
-		FREE(n->pointers);
-		FREE(n->keys);
-		FREE(n);
+		BPT_FREE(n->pointers);
+		BPT_FREE(n->keys);
+		BPT_FREE(n);
 	}
 }
 

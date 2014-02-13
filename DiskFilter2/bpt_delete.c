@@ -389,17 +389,15 @@ node * delete_entry( node * root, node * n, KEY_T key, void * pointer )
 }
 
 /* Master deletion function. */
-node * Delete(node * root, KEY_T key, BOOLEAN free, PBOOLEAN deleted)
+node * Delete(node * root, KEY_T key, BOOLEAN free)
 {
 	node * key_leaf;
 	record * key_record;
 
 	key_record = Find_Record(root, key);
 	key_leaf = Find_Leaf(root, key);
-	*deleted = FALSE;
 	if (key_record != NULL && key_leaf != NULL)
 	{
-		*deleted = TRUE;
 		root = delete_entry(root, key_leaf, key, key_record);
 		if (free == TRUE)
 			Free_Record(key_record);

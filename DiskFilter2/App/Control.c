@@ -55,7 +55,7 @@ struct command options[] =
 	{"clear", "Clear Statistic of One Volume", IOCTL_DF_CLEAR_STAT},
 	{"quiet", "Quite All Output", IOCTL_DF_QUIET},
 	{"verbose", "Verbose All Output", IOCTL_DF_VERBOSE},
-	{"verify", "Verify Cache Pool Data", IOCTL_DF_VERIFY},
+	{"verify", "Switch Verify Cache Pool Data", IOCTL_DF_VERIFY},
 	{"q", "Quit", 0},
 	{0, 0, 0}
 };
@@ -136,11 +136,13 @@ int main(int argc, char *argv[])
 						&dwOutBytes,
 						NULL
 					);
-					if (strcmp(istr, "stat") == 0 && dwOutBytes >= 3*sizeof(ULONG32))
+					if (strcmp(istr, "stat") == 0 && dwOutBytes >= 5*sizeof(ULONG32))
 					{
 						printf("CacheHit:  %10d\n", oBuffer[0]);
 						printf("ReadCount: %10d\n", oBuffer[1]);
 						printf("WriteCount:%10d\n", oBuffer[2]);
+						printf("CacheSize: %10d\n", oBuffer[3]);
+						printf("CacheUsed: %10d\n", oBuffer[4]);
 					}
 					break;
 				}

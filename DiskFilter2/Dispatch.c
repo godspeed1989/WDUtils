@@ -104,12 +104,16 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 						DevExt->ReadCount = 0;
 						DevExt->WriteCount = 0;
 						DestroyCachePool(&DevExt->CachePool);
+						DevExt->bIsProtected = FALSE;
 					}
 					else if (DevExt->bIsProtected == FALSE)
 					{
-						InitCachePool(&DevExt->CachePool);
+						if (InitCachePool(&DevExt->CachePool) == TRUE)
+							DevExt->bIsProtected = TRUE;
+						else
+							KdPrint(("%s:%d-%d: Init Cache Pool Error\n", __FUNCTION__,
+										DevExt->DiskNumber, DevExt->PartitionNumber));
 					}
-					DevExt->bIsProtected = Type;
 				}
 				DeviceObject = DeviceObject->NextDevice;
 			}
@@ -136,12 +140,16 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 						DevExt->ReadCount = 0;
 						DevExt->WriteCount = 0;
 						DestroyCachePool(&DevExt->CachePool);
+						DevExt->bIsProtected = FALSE;
 					}
 					else if (DevExt->bIsProtected == FALSE)
 					{
-						InitCachePool(&DevExt->CachePool);
+						if (InitCachePool(&DevExt->CachePool) == TRUE)
+							DevExt->bIsProtected = TRUE;
+						else
+							KdPrint(("%s:%d-%d: Init Cache Pool Error\n", __FUNCTION__,
+										DevExt->DiskNumber, DevExt->PartitionNumber));
 					}
-					DevExt->bIsProtected = Type;
 					break;
 				}
 				DeviceObject = DeviceObject->NextDevice;

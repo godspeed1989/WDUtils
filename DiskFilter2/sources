@@ -10,4 +10,5 @@ SOURCES=DiskFilter.c	\
 		bpt_find.c		\
 		bpt_util.c		\
 		Cache.c			\
+		Storage.c		\
 		md5.c

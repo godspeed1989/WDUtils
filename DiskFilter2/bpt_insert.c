@@ -51,9 +51,9 @@ node * insert_into_leaf_after_splitting(node * root, node * leaf, KEY_T key, rec
 
 	KEY_T insertion_index, split, new_key, i, j;
 
-	temp_keys = (KEY_T*)MALLOC( order * sizeof(KEY_T) );
+	temp_keys = (KEY_T*)BPT_MALLOC( order * sizeof(KEY_T) );
 	assert(temp_keys);
-	temp_pointers = (void**)MALLOC( order * sizeof(void *) );
+	temp_pointers = (void**)BPT_MALLOC( order * sizeof(void *) );
 	assert(temp_pointers);
 
 	// locate insert index
@@ -98,8 +98,8 @@ node * insert_into_leaf_after_splitting(node * root, node * leaf, KEY_T key, rec
 
 	new_key = new_leaf->keys[0];
 
-	FREE(temp_pointers);
-	FREE(temp_keys);
+	BPT_FREE(temp_pointers);
+	BPT_FREE(temp_keys);
 
 	return insert_into_parent(root, leaf, new_key, new_leaf);
 }
@@ -151,9 +151,9 @@ node * insert_into_node_after_splitting(node * root, node * old_node, KEY_T left
 	 * Then create a new node and copy half of the keys and pointers
 	 * to the old node and the other half to the new.
 	 */
-	temp_keys = (KEY_T*)MALLOC( order * sizeof(KEY_T) );
+	temp_keys = (KEY_T*)BPT_MALLOC( order * sizeof(KEY_T) );
 	assert(temp_keys);
-	temp_pointers = (void**)MALLOC( (order + 1) * sizeof(void *) );
+	temp_pointers = (void**)BPT_MALLOC( (order + 1) * sizeof(void *) );
 	assert(temp_pointers);
 
 	for (i = 0, j = 0; i < old_node->num_keys + 1; i++, j++)
@@ -199,8 +199,8 @@ node * insert_into_node_after_splitting(node * root, node * old_node, KEY_T left
 		child->parent = new_node;
 	}
 
-	FREE(temp_pointers);
-	FREE(temp_keys);
+	BPT_FREE(temp_pointers);
+	BPT_FREE(temp_keys);
 	/* Insert a new key into the parent of the two
 	 * nodes resulting from the split, with
 	 * the old node to the left and the new to the right.

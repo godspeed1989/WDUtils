@@ -2,30 +2,20 @@
 
 #include "bpt.h"
 #include "common.h"
+#include "Storage.h"
 
 #define READ_VERIFY
 
 #define _READ_								TRUE
 #define _WRITE_								FALSE
-#define SECTOR_SIZE							512
-#define NSB									1		/* Number Sectors per Block */
-#define BLOCK_SIZE							(SECTOR_SIZE*NSB)
 #define CACHE_POOL_SIZE						50		/* MB */
-
-#define CACHE_DATA_T		PUCHAR
-#define CACHE_DATA_ALLOC()	ExAllocatePoolWithTag(NonPagedPool, (SIZE_T)BLOCK_SIZE, CACHE_POOL_TAG);
-#define CACHE_DATA_FREE(p)	ExFreePoolWithTag(p, CACHE_POOL_TAG);
-#define CACHE_DATA_WRITE(cdata,off,p,len) \
-			RtlCopyMemory(cdata+off, p, len);
-#define CACHE_DATA_READ(p,cdata,off,len) \
-			RtlCopyMemory(p, cdata+off, len);
 
 typedef struct _CACHE_BLOCK
 {
 	BOOLEAN				Accessed;
 	BOOLEAN				Modified;
 	LONGLONG			Index;
-	CACHE_DATA_T		Data;
+	ULONG				StorageIndex;
 }CACHE_BLOCK, *PCACHE_BLOCK;
 
 typedef struct _CACHE_POOL
@@ -33,6 +23,7 @@ typedef struct _CACHE_POOL
 	ULONG				Size;
 	ULONG				Used;
 	node*				bpt_root;
+	STORAGE_POOL		Storage;
 }CACHE_POOL, *PCACHE_POOL;
 
 BOOLEAN
@@ -88,31 +79,34 @@ VOID
 			}											\
 		}while(0);
 
-#define DO_READ_VERIFY(pBlock,Buffer)	\
-		if(g_bDataVerify){														\
+#define DO_READ_VERIFY(Storage,pBlock)	\
+		while (1 && g_bDataVerify)												\
+		{																		\
 			NTSTATUS Status;													\
-			ULONG matched1, matched2;											\
+			ULONG matched;														\
+			PUCHAR D1, D2;														\
 			LARGE_INTEGER readOffset;											\
-			UCHAR Data[BLOCK_SIZE];												\
+			D1 = ExAllocatePoolWithTag(NonPagedPool, BLOCK_SIZE, 'tmpb');		\
+			if (D1 == NULL) break;												\
+			D2 = ExAllocatePoolWithTag(NonPagedPool, BLOCK_SIZE, 'tmpb');		\
+			if (D2 == NULL) { ExFreePoolWithTag(D1, 'tmpb'); break; }			\
 			readOffset.QuadPart = BLOCK_SIZE * pBlock->Index;					\
 			Status = IoDoRWRequestSync (										\
 						IRP_MJ_READ,											\
 						LowerDeviceObject,										\
-						Data,													\
+						D1,														\
 						BLOCK_SIZE,												\
 						&readOffset												\
 					);															\
+			StoragePoolRead(Storage, D2, pBlock->StorageIndex, 0, BLOCK_SIZE);	\
 			if (NT_SUCCESS(Status))												\
-			{																	\
-				matched1 = RtlCompareMemory(Data, pBlock->Data, BLOCK_SIZE);	\
-				matched2 = RtlCompareMemory(Data, Buffer, BLOCK_SIZE);			\
-			}																	\
+				matched = RtlCompareMemory(D1, D2, BLOCK_SIZE);					\
 			else																\
-			{																	\
-				matched1 = 9999999;												\
-				matched2 = 9999999;												\
-			}																	\
-			if (matched1 != BLOCK_SIZE || matched2 != BLOCK_SIZE)				\
-				DbgPrint("%s: %d-%d: --(%d)<-(%d)->(%d)--\n", __FUNCTION__,		\
-				DiskNumber, PartitionNumber, matched1, BLOCK_SIZE, matched2);	\
+				matched = 9999999;												\
+			if (matched != BLOCK_SIZE)											\
+				DbgPrint("%s: %d-%d: --(%d)->(%d)--\n", __FUNCTION__,			\
+					DiskNumber, PartitionNumber, BLOCK_SIZE, matched);			\
+			ExFreePoolWithTag(D1, 'tmpb');										\
+			ExFreePoolWithTag(D2, 'tmpb');										\
+			break;																\
 		}

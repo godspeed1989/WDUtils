@@ -191,15 +191,9 @@ VOID StartDevice(PDEVICE_OBJECT DeviceObject)
 		DF_QueryDeviceInfo(DeviceObject);
 		if (NT_SUCCESS(DF_CreateRWThread(DevExt)))
 		{
-			InitCachePool(&DevExt->CachePool);
 			KdPrint((": %p Start\n", DeviceObject));
 		}
 		KdPrint(("\n"));
-		// TESTING..................................................................................
-	#if 0
-		if (DevExt->DiskNumber == 0 && DevExt->PartitionNumber == 1)
-			DevExt->bIsProtected = TRUE;
-	#endif
 	}
 	DeviceObject = DeviceObject->NextDevice;
 }

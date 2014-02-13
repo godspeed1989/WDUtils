@@ -4,15 +4,14 @@
 BOOLEAN InitCachePool(PCACHE_POOL CachePool)
 {
 	CachePool->Used = 0;
-	CachePool->Size = (CACHE_POOL_SIZE << 20)/(512);
+	CachePool->Size = (CACHE_POOL_SIZE << 20)/(BLOCK_SIZE);
 	CachePool->bpt_root = NULL;
-	return TRUE;
+	return InitStoragePool(&CachePool->Storage, CachePool->Size);
 }
 
 void Free_Record( record * r )
 {
 	PCACHE_BLOCK p = (PCACHE_BLOCK)r;
-	CACHE_DATA_FREE(p->Data);
 	ExFreePoolWithTag(p, CACHE_POOL_TAG);
 }
 
@@ -23,6 +22,7 @@ VOID DestroyCachePool(PCACHE_POOL CachePool)
 	// B+ Tree Destroy
 	Destroy_Tree(CachePool->bpt_root);
 	CachePool->bpt_root = NULL;
+	DestroyStoragePool(&CachePool->Storage);
 }
 
 /**
@@ -61,9 +61,14 @@ static PCACHE_BLOCK GetFreeBlock(PCACHE_POOL CachePool)
 						(SIZE_T)sizeof(CACHE_BLOCK),
 						CACHE_POOL_TAG
 					);
-		pBlock->Data = CACHE_DATA_ALLOC();
+		if (pBlock == NULL) goto l_error;
+		pBlock->StorageIndex = StoragePoolAlloc(&CachePool->Storage);
+		if (pBlock->StorageIndex == -1) goto l_error;
 		return pBlock;
 	}
+l_error:
+	if (pBlock)
+		ExFreePoolWithTag(pBlock, CACHE_POOL_TAG);
 	return NULL;
 }
 
@@ -78,8 +83,9 @@ static BOOLEAN AddOneBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 		pBlock->Accessed = FALSE;
 		pBlock->Modified = FALSE;
 		pBlock->Index = Index;
-		CACHE_DATA_WRITE (
-			pBlock->Data, 0,
+		StoragePoolWrite (
+			&CachePool->Storage,
+			pBlock->StorageIndex, 0,
 			Data,
 			BLOCK_SIZE
 		);
@@ -96,10 +102,14 @@ static BOOLEAN AddOneBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
  */
 static VOID DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 {
-	BOOLEAN deleted = FALSE;
-	CachePool->bpt_root = Delete(CachePool->bpt_root, Index, TRUE, &deleted);
-	if (deleted == TRUE)
+	PCACHE_BLOCK pBlock;
+
+	if (QueryPoolByIndex(CachePool, Index, &pBlock) == TRUE)
+	{
+		StoragePoolFree(&CachePool->Storage, pBlock->StorageIndex);
+		CachePool->bpt_root = Delete(CachePool->bpt_root, Index, TRUE);		
 		CachePool->Used--;
+	}
 }
 
 /**
@@ -138,9 +148,11 @@ BOOLEAN QueryAndCopyFromCachePool (
 		goto l_error;
 
 #define _copy_data(bi,off,len) 					\
-		CACHE_DATA_READ (						\
+		StoragePoolRead (						\
+			&CachePool->Storage,				\
 			Buf,								\
-			ppInternalBlocks[bi]->Data, off,	\
+			ppInternalBlocks[bi]->StorageIndex,	\
+			off,								\
 			len									\
 		);										\
 		ppInternalBlocks[bi]->Accessed = TRUE;	\
@@ -154,7 +166,7 @@ BOOLEAN QueryAndCopyFromCachePool (
 		{
 			_copy_data(0, BLOCK_SIZE-front_skip, (front_skip>origLen)?origLen:front_skip);
 		#ifdef READ_VERIFY
-			DO_READ_VERIFY(ppInternalBlocks[0], ppInternalBlocks[0]->Data);
+			DO_READ_VERIFY(&CachePool->Storage, ppInternalBlocks[0]);
 		#endif
 		}
 	}
@@ -170,7 +182,7 @@ BOOLEAN QueryAndCopyFromCachePool (
 	{
 		_copy_data(i, 0, BLOCK_SIZE);
 	#ifdef READ_VERIFY
-		DO_READ_VERIFY(ppInternalBlocks[i], ppInternalBlocks[i]->Data);
+		DO_READ_VERIFY(&CachePool->Storage, ppInternalBlocks[i]);
 	#endif
 	}
 
@@ -182,7 +194,7 @@ BOOLEAN QueryAndCopyFromCachePool (
 		{
 			_copy_data(0, 0, end_cut);
 		#ifdef READ_VERIFY
-			DO_READ_VERIFY(ppInternalBlocks[0], ppInternalBlocks[0]->Data);
+			DO_READ_VERIFY(&CachePool->Storage, ppInternalBlocks[0]);
 		#endif
 		}
 	}
@@ -203,7 +215,6 @@ static VOID FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data
 	KEY_T i, key;
 	node *leaf;
 	PCACHE_BLOCK pBlock = NULL;
-	BOOLEAN deleted;
 	leaf = Get_Leftmost_Leaf(CachePool->bpt_root);
 	while(leaf)
 	{
@@ -221,14 +232,15 @@ static VOID FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data
 	}
 	return;
 found:
-	CachePool->bpt_root = Delete(CachePool->bpt_root, key, FALSE, &deleted);
-	if (pBlock != NULL && deleted == TRUE)
+	CachePool->bpt_root = Delete(CachePool->bpt_root, key, FALSE);
+	if (pBlock != NULL)
 	{
 		pBlock->Accessed = FALSE;
 		pBlock->Modified = FALSE;
 		pBlock->Index = Index;
-		CACHE_DATA_WRITE (
-			pBlock->Data, 0,
+		StoragePoolWrite (
+			&CachePool->Storage,
+			pBlock->StorageIndex, 0,
 			Data,
 			BLOCK_SIZE
 		);
@@ -273,7 +285,7 @@ VOID UpdataCachePool(
 				else
 				{
 				#ifdef READ_VERIFY
-					DO_READ_VERIFY(pBlock, Buf+i*BLOCK_SIZE);
+					DO_READ_VERIFY(&CachePool->Storage, pBlock);
 				#endif
 					pBlock->Accessed = TRUE;
 				}
@@ -290,7 +302,7 @@ VOID UpdataCachePool(
 			else
 			{
 			#ifdef READ_VERIFY
-				DO_READ_VERIFY(pBlock, Buf+i*BLOCK_SIZE);
+				DO_READ_VERIFY(&CachePool->Storage, pBlock);
 			#endif
 			}
 			i++;
@@ -308,8 +320,9 @@ VOID UpdataCachePool(
 			if(QueryPoolByIndex(CachePool, Offset+i, &pBlock) == TRUE)
 			{
 				// Update
-				CACHE_DATA_WRITE (
-					pBlock->Data, 0,
+				StoragePoolWrite (
+					&CachePool->Storage,
+					pBlock->StorageIndex, 0,
 					Buf + i * BLOCK_SIZE,
 					BLOCK_SIZE
 				);

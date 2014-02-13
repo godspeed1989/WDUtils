@@ -7,10 +7,11 @@
 #ifndef USER_APP
 	#include <Ntifs.h>
 	#define CACHE_POOL_TAG						'cpiD'
+	#define STORAGE_POOL_TAG					'stoD'
 	#define BPT_POOL_TAG						'bptD'
 	#define assert(expr)						ASSERT(expr)
-	#define FREE(p)								ExFreePoolWithTag(p,BPT_POOL_TAG)
-	#define MALLOC(n)							ExAllocatePoolWithTag (	\
+	#define BPT_FREE(p)							ExFreePoolWithTag(p,BPT_POOL_TAG)
+	#define BPT_MALLOC(n)						ExAllocatePoolWithTag (	\
 													NonPagedPool,		\
 													(SIZE_T)(n),		\
 													BPT_POOL_TAG		\
@@ -25,9 +26,9 @@
 	#define FALSE								0
 	#define ASSERT(expr)						assert((expr))
 	#define DbgPrint(str)						fprintf(stderr,str)
-	#define MALLOC(length)						malloc((length))
+	#define BPT_MALLOC(length)					malloc((length))
 	#define ExAllocatePoolWithTag(t,length,tag)	malloc((length))
-	#define FREE(ptr)							free((ptr))
+	#define BPT_FREE(ptr)						free((ptr))
 	#define ExFreePoolWithTag(ptr,tag)			free((ptr))
 	#define RtlCopyMemory(dst,src,len)			memcpy((dst),(src),(len))
 	typedef void								VOID;
