@@ -79,7 +79,7 @@ VOID
 			}											\
 		}while(0);
 
-#define DO_READ_VERIFY(Storage,pBlock)	\
+#define DO_READ_VERIFY(Storage,pBlock,PhysicalDeviceObject)						\
 		while (1 && g_bDataVerify)												\
 		{																		\
 			NTSTATUS Status;													\
@@ -93,7 +93,7 @@ VOID
 			readOffset.QuadPart = BLOCK_SIZE * pBlock->Index;					\
 			Status = IoDoRWRequestSync (										\
 						IRP_MJ_READ,											\
-						LowerDeviceObject,										\
+						PhysicalDeviceObject,									\
 						D1,														\
 						BLOCK_SIZE,												\
 						&readOffset												\

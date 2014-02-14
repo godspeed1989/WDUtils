@@ -53,6 +53,7 @@ DF_DispatchPower(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 NTSTATUS
 DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
+	NTSTATUS				Status;
 	PVOID					InputBuffer;
 	ULONG					InputLength;
 	PVOID					OutputBuffer;
@@ -125,6 +126,7 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 			Type = (IOCTL_DF_START == IrpSp->Parameters.DeviceIoControl.IoControlCode);
 			DBG_PRINT(DBG_TRACE_OPS, ("%s: %s One Filter\n", __FUNCTION__, Type?"Start":"Stop"));
 			DeviceObject = g_pDriverObject->DeviceObject;
+			Status = STATUS_UNSUCCESSFUL;
 			while (DeviceObject != NULL)
 			{
 				DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
@@ -150,11 +152,12 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 							KdPrint(("%s:%d-%d: Init Cache Pool Error\n", __FUNCTION__,
 										DevExt->DiskNumber, DevExt->PartitionNumber));
 					}
+					Status = STATUS_SUCCESS;
 					break;
 				}
 				DeviceObject = DeviceObject->NextDevice;
 			}
-			COMPLETE_IRP(Irp, STATUS_SUCCESS);
+			COMPLETE_IRP(Irp, Status);
 			return Irp->IoStatus.Status;
 		// Get or Clear Statistic
 		case IOCTL_DF_GET_STAT:
@@ -162,6 +165,7 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 			Type = (IOCTL_DF_GET_STAT == IrpSp->Parameters.DeviceIoControl.IoControlCode);
 			DBG_PRINT(DBG_TRACE_OPS, ("%s: %s Statistic\n", __FUNCTION__, Type?"Get":"Clear"));
 			DeviceObject = g_pDriverObject->DeviceObject;
+			Status = STATUS_UNSUCCESSFUL;
 			while (DeviceObject != NULL)
 			{
 				DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
@@ -186,11 +190,12 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 						DevExt->WriteCount = 0;
 						Irp->IoStatus.Information = 0;
 					}
+					Status = STATUS_SUCCESS;
 					break;
 				}
 				DeviceObject = DeviceObject->NextDevice;
 			}
-			Irp->IoStatus.Status = STATUS_SUCCESS;
+			Irp->IoStatus.Status = Status;
 			IoCompleteRequest(Irp, IO_NO_INCREMENT);
 			return Irp->IoStatus.Status;
 		// Setup Output

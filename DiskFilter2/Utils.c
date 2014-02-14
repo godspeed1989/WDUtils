@@ -191,7 +191,7 @@ VOID StartDevice(PDEVICE_OBJECT DeviceObject)
 		DF_QueryDeviceInfo(DeviceObject);
 		if (NT_SUCCESS(DF_CreateRWThread(DevExt)))
 		{
-			KdPrint((": %p Start\n", DeviceObject));
+			KdPrint(("%s: %p Start\n", __FUNCTION__, DeviceObject));
 		}
 		KdPrint(("\n"));
 	}

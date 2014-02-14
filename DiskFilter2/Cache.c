@@ -9,6 +9,9 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool)
 	return InitStoragePool(&CachePool->Storage, CachePool->Size);
 }
 
+/**
+ * Used In B+ Tree Delete Node
+ */
 void Free_Record( record * r )
 {
 	PCACHE_BLOCK p = (PCACHE_BLOCK)r;
@@ -103,7 +106,6 @@ static BOOLEAN AddOneBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 static VOID DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 {
 	PCACHE_BLOCK pBlock;
-
 	if (QueryPoolByIndex(CachePool, Index, &pBlock) == TRUE)
 	{
 		StoragePoolFree(&CachePool->Storage, pBlock->StorageIndex);
@@ -166,7 +168,7 @@ BOOLEAN QueryAndCopyFromCachePool (
 		{
 			_copy_data(0, BLOCK_SIZE-front_skip, (front_skip>origLen)?origLen:front_skip);
 		#ifdef READ_VERIFY
-			DO_READ_VERIFY(&CachePool->Storage, ppInternalBlocks[0]);
+			DO_READ_VERIFY(&CachePool->Storage, ppInternalBlocks[0], LowerDeviceObject);
 		#endif
 		}
 	}
@@ -182,7 +184,7 @@ BOOLEAN QueryAndCopyFromCachePool (
 	{
 		_copy_data(i, 0, BLOCK_SIZE);
 	#ifdef READ_VERIFY
-		DO_READ_VERIFY(&CachePool->Storage, ppInternalBlocks[i]);
+		DO_READ_VERIFY(&CachePool->Storage, ppInternalBlocks[i], LowerDeviceObject);
 	#endif
 	}
 
@@ -194,7 +196,7 @@ BOOLEAN QueryAndCopyFromCachePool (
 		{
 			_copy_data(0, 0, end_cut);
 		#ifdef READ_VERIFY
-			DO_READ_VERIFY(&CachePool->Storage, ppInternalBlocks[0]);
+			DO_READ_VERIFY(&CachePool->Storage, ppInternalBlocks[0], LowerDeviceObject);
 		#endif
 		}
 	}
@@ -285,7 +287,7 @@ VOID UpdataCachePool(
 				else
 				{
 				#ifdef READ_VERIFY
-					DO_READ_VERIFY(&CachePool->Storage, pBlock);
+					DO_READ_VERIFY(&CachePool->Storage, pBlock, LowerDeviceObject);
 				#endif
 					pBlock->Accessed = TRUE;
 				}
@@ -302,8 +304,9 @@ VOID UpdataCachePool(
 			else
 			{
 			#ifdef READ_VERIFY
-				DO_READ_VERIFY(&CachePool->Storage, pBlock);
+				DO_READ_VERIFY(&CachePool->Storage, pBlock, LowerDeviceObject);
 			#endif
+				pBlock->Accessed = TRUE;
 			}
 			i++;
 		}

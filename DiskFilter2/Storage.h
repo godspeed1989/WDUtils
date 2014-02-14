@@ -12,8 +12,9 @@ typedef struct _STORAGE_POOL
 	ULONG			Size;
 	ULONG			Used;
 	RTL_BITMAP		Bitmap;
+	PULONG			Bitmap_Buffer;
 #ifdef USE_DRAM
-	PVOID			Buffer;
+	PUCHAR			Buffer;
 #endif
 	// Opaque
 	ULONG			HintIndex;

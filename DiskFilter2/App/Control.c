@@ -126,16 +126,19 @@ int main(int argc, char *argv[])
 							printf("Highly recommend not cache system volume!\n");
 						printf("%s disk(%d) partition(%d)\n", istr, iBuffer[0], iBuffer[1]);
 					}
-					DeviceIoControl (
-						m_hCommDevice,
-						options[i].IoControlCode,
-						iBuffer,
-						BUFLEN * sizeof(ULONG32),
-						oBuffer,
-						BUFLEN * sizeof(ULONG32),
-						&dwOutBytes,
-						NULL
-					);
+					if ( DeviceIoControl(
+							m_hCommDevice,
+							options[i].IoControlCode,
+							iBuffer,
+							BUFLEN * sizeof(ULONG32),
+							oBuffer,
+							BUFLEN * sizeof(ULONG32),
+							&dwOutBytes,
+							NULL) == FALSE )
+					{
+						printf("DeviceIoControl Error.\n");
+						break;
+					}
 					if (strcmp(istr, "stat") == 0 && dwOutBytes >= 5*sizeof(ULONG32))
 					{
 						printf("CacheHit:  %10d\n", oBuffer[0]);

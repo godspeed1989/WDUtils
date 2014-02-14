@@ -186,6 +186,7 @@ DF_AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject)
 
 	DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 	// Initialize Device Extention
+	RtlZeroMemory(DevExt, sizeof(DF_DEVICE_EXTENSION));
 	DevExt->DiskNumber = -1;
 	DevExt->PartitionNumber = -1;
 	DevExt->bIsProtected = FALSE;
