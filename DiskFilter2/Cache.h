@@ -12,11 +12,25 @@
 
 typedef struct _CACHE_BLOCK
 {
-	BOOLEAN				Accessed;
 	BOOLEAN				Modified;
 	LONGLONG			Index;
 	ULONG				StorageIndex;
+	ULONG				HeapIndex;
 }CACHE_BLOCK, *PCACHE_BLOCK;
+
+#define HEAP_DAT_T CACHE_BLOCK
+typedef struct _HeapEntry
+{
+	ULONG Value;
+	HEAP_DAT_T* pData;
+}HeapEntry, *PHeapEntry;
+
+typedef struct _Heap
+{
+	ULONG		Size;
+	ULONG		Used;
+	PHeapEntry*	Entries;
+}Heap, *PHeap;
 
 typedef struct _CACHE_POOL
 {
@@ -24,6 +38,7 @@ typedef struct _CACHE_POOL
 	ULONG				Used;
 	node*				bpt_root;
 	STORAGE_POOL		Storage;
+	Heap				Heap;
 }CACHE_POOL, *PCACHE_POOL;
 
 BOOLEAN

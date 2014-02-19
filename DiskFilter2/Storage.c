@@ -3,9 +3,8 @@
 BOOLEAN
 InitStoragePool(PSTORAGE_POOL StoragePool, ULONG Size)
 {
-	StoragePool->Used = 0;
+	RtlZeroMemory(StoragePool, sizeof(STORAGE_POOL));
 	StoragePool->Size = Size;
-	StoragePool->HintIndex = 0;
 
 	StoragePool->Bitmap_Buffer = ExAllocatePoolWithTag (
 		NonPagedPool,
@@ -24,8 +23,13 @@ InitStoragePool(PSTORAGE_POOL StoragePool, ULONG Size)
 #ifdef USE_DRAM
 	StoragePool->Buffer = (PUCHAR)ExAllocatePoolWithTag(NonPagedPool,
 							(SIZE_T)(BLOCK_SIZE*Size), STORAGE_POOL_TAG);
-	return (StoragePool->Buffer != NULL);
+	if (StoragePool->Buffer == NULL)
+	{
+		ExFreePoolWithTag(StoragePool->Bitmap_Buffer, STORAGE_POOL_TAG);
+		StoragePool->Bitmap_Buffer = NULL;
+	}
 #endif
+	return TRUE;
 }
 
 VOID
