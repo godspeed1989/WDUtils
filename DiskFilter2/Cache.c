@@ -232,7 +232,6 @@ l_error:
  */
 static VOID FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 {
-	KEY_T i;
 	PCACHE_BLOCK pBlock;
 
 	pBlock = GetHeapTop(&CachePool->Heap);

@@ -27,6 +27,7 @@ InitStoragePool(PSTORAGE_POOL StoragePool, ULONG Size)
 	{
 		ExFreePoolWithTag(StoragePool->Bitmap_Buffer, STORAGE_POOL_TAG);
 		StoragePool->Bitmap_Buffer = NULL;
+		return FALSE;
 	}
 #endif
 	return TRUE;
