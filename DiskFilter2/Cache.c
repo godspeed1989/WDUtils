@@ -317,7 +317,7 @@ VOID UpdataCachePool(
 			DeleteOneBlockFromPool(CachePool, Offset-1);
 		for (i = 0; i < Length; i++)
 		{
-		#if 1
+		#if 0
 			DeleteOneBlockFromPool(CachePool, Offset+i);
 		#else
 			if(QueryPoolByIndex(CachePool, Offset+i, &pBlock) == TRUE)
@@ -330,6 +330,7 @@ VOID UpdataCachePool(
 					BLOCK_SIZE
 				);
 				pBlock->Modified = TRUE;
+				INC_BLOCK_REFERENCE(CachePool, pBlock);
 				continue;
 			}
 			if (IsFull(CachePool) == FALSE)

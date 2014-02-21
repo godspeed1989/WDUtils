@@ -148,7 +148,6 @@ HeapSort(PHeap Heap)
 	Heap->Used = Used;
 }
 
-//#define ACCURATE_HEAP
 
 VOID
 HeapZeroValue(PHeap Heap, ULONG HeapIndex)
@@ -156,15 +155,11 @@ HeapZeroValue(PHeap Heap, ULONG HeapIndex)
 	if (Heap->Entries[HeapIndex]->Value)
 	{
 		Heap->Entries[HeapIndex]->Value = 0;
-	#ifdef ACCURATE_HEAP
-		HeapMake(Heap);
-	#else
 		#ifdef MIN_HEAP
 			HeapSiftUp(Heap, HeapIndex);
 		#else
 			HeapSiftDown(Heap, HeapIndex);
 		#endif
-	#endif
 	}
 }
 
@@ -172,15 +167,11 @@ VOID
 HeapIncreaseValue(PHeap Heap, ULONG HeapIndex, ULONG Inc)
 {
 	Heap->Entries[HeapIndex]->Value += Inc;
-#ifdef ACCURATE_HEAP
-	HeapMake(Heap);
-#else
 	#ifdef MIN_HEAP
 		HeapSiftDown(Heap, HeapIndex);
 	#else
 		HeapSiftUp(Heap, HeapIndex);
 	#endif
-#endif
 }
 
 VOID
@@ -192,15 +183,11 @@ HeapDecreaseValue(PHeap Heap, ULONG HeapIndex, ULONG Dec)
 		Heap->Entries[HeapIndex]->Value -= Dec;
 	else
 		Heap->Entries[HeapIndex]->Value = 0;
-#ifdef ACCURATE_HEAP
-	HeapMake(Heap);
-#else
 	#ifdef MIN_HEAP
 		HeapSiftUp(Heap, HeapIndex);
 	#else
 		HeapSiftDown(Heap, HeapIndex);
 	#endif
-#endif
 }
 
 HEAP_DAT_T*
