@@ -2,7 +2,7 @@
 
 #include "Cache.h"
 
-//#define MIN_HEAP
+#define MIN_HEAP
 
 BOOLEAN InitHeap (PHeap Heap, ULONG Size);
 

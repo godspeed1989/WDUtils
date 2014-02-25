@@ -35,6 +35,7 @@ VOID
 #define DBG_TRACE_ROUTINES				0x00000001
 #define DBG_TRACE_OPS					0x00000002
 #define DBG_TRACE_RW					0x00000004
+#define DBG_TRACE_CACHE					0x00000008
 #define DBG_PRINT( _dbgLevel, _string ) \
 	( FlagOn(g_TraceFlags,(_dbgLevel) ) ? DbgPrint _string : ((void)0) )
 

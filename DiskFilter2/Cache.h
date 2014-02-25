@@ -42,7 +42,13 @@ typedef struct _CACHE_POOL
 }CACHE_POOL, *PCACHE_POOL;
 
 BOOLEAN
-	InitCachePool (PCACHE_POOL CachePool);
+	InitCachePool (
+		PCACHE_POOL CachePool
+	#ifndef USE_DRAM
+		,ULONG DiskNum
+		,ULONG PartitionNum
+	#endif
+	);
 
 VOID
 	DestroyCachePool (PCACHE_POOL CachePool);

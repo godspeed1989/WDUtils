@@ -135,7 +135,7 @@ VOID DF_ReadWriteThread(PVOID Context)
 					#endif
 						) == TRUE)
 				{
-					DBG_PRINT(DBG_TRACE_OPS, ("hit:%u-%u: off(%I64d) len(%d)\n", DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
+					DBG_PRINT(DBG_TRACE_CACHE, ("hit:%u-%u: off(%I64d) len(%d)\n", DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
 					DevExt->CacheHit++;
 					Irp->IoStatus.Status = STATUS_SUCCESS;
 					Irp->IoStatus.Information = Length;

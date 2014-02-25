@@ -1,10 +1,23 @@
 #include "Storage.h"
+#include "Utils.h"
+#include <Ntdddisk.h>
 
 BOOLEAN
-InitStoragePool(PSTORAGE_POOL StoragePool, ULONG Size)
+InitStoragePool(PSTORAGE_POOL StoragePool, ULONG Size
+				#ifndef USE_DRAM
+					,ULONG DiskNum
+					,ULONG PartitionNum
+				#endif
+				)
 {
+#ifndef USE_DRAM
+	NTSTATUS				Status;
+	PFILE_OBJECT			FileObject;
+	PARTITION_INFORMATION	PartitionInfo;
+#endif
 	RtlZeroMemory(StoragePool, sizeof(STORAGE_POOL));
 	StoragePool->Size = Size;
+	StoragePool->TotalSize = BLOCK_SIZE*Size;
 
 	StoragePool->Bitmap_Buffer = ExAllocatePoolWithTag (
 		NonPagedPool,
@@ -24,13 +37,31 @@ InitStoragePool(PSTORAGE_POOL StoragePool, ULONG Size)
 	StoragePool->Buffer = (PUCHAR)ExAllocatePoolWithTag(NonPagedPool,
 							(SIZE_T)(BLOCK_SIZE*Size), STORAGE_POOL_TAG);
 	if (StoragePool->Buffer == NULL)
-	{
-		ExFreePoolWithTag(StoragePool->Bitmap_Buffer, STORAGE_POOL_TAG);
-		StoragePool->Bitmap_Buffer = NULL;
-		return FALSE;
-	}
+		goto l_error;
+#else
+	Status = DF_GetDiskDeviceObjectPointer(DiskNum, PartitionNum, &FileObject, &StoragePool->BlockDevice);
+	if (!NT_SUCCESS(Status))
+		goto l_error;
+	ObfDereferenceObject(FileObject);
+	// Get Partition Length
+	Status = IoDoIoctl (
+		IOCTL_DISK_GET_PARTITION_INFO,
+		StoragePool->BlockDevice,
+		NULL,
+		0,
+		&PartitionInfo,
+		sizeof(PARTITION_INFORMATION)
+	);
+	if (!NT_SUCCESS(Status))
+		goto l_error;
+	if (StoragePool->TotalSize + BLOCK_RESERVE > PartitionInfo.PartitionLength.QuadPart)
+		goto l_error;
 #endif
 	return TRUE;
+l_error:
+	ExFreePoolWithTag(StoragePool->Bitmap_Buffer, STORAGE_POOL_TAG);
+	StoragePool->Bitmap_Buffer = NULL;
+	return FALSE;
 }
 
 VOID
@@ -38,6 +69,7 @@ DestroyStoragePool(PSTORAGE_POOL StoragePool)
 {
 	StoragePool->Used = 0;
 	StoragePool->Size = 0;
+	StoragePool->TotalSize = 0;
 	StoragePool->HintIndex = 0;
 	if (StoragePool->Bitmap_Buffer)
 		ExFreePoolWithTag(StoragePool->Bitmap_Buffer, STORAGE_POOL_TAG);
@@ -53,8 +85,6 @@ ULONG
 StoragePoolAlloc(PSTORAGE_POOL StoragePool)
 {
 	ULONG Index;
-	Index = -1;
-#ifdef USE_DRAM
 	Index = RtlFindClearBitsAndSet (
 			&StoragePool->Bitmap,
 			1, //NumberToFind
@@ -63,7 +93,6 @@ StoragePoolAlloc(PSTORAGE_POOL StoragePool)
 	if (Index != -1)
 		StoragePool->Used++;
 	StoragePool->HintIndex = (Index == -1)?0:Index;
-#endif
 	return Index;
 }
 
@@ -78,29 +107,39 @@ StoragePoolFree(PSTORAGE_POOL StoragePool, ULONG Index)
 }
 
 VOID
-StoragePoolWrite(PSTORAGE_POOL StoragePool, ULONG Index, ULONG Offset, PVOID Data, ULONG Len)
+StoragePoolWrite(PSTORAGE_POOL StoragePool, ULONG StartIndex, ULONG Offset, PVOID Data, ULONG Len)
 {
+	LARGE_INTEGER	writeOffset;
+	writeOffset.QuadPart = StartIndex * BLOCK_SIZE + Offset + BLOCK_RESERVE;
+	ASSERT ((writeOffset.QuadPart + Len) <= (StoragePool->TotalSize));
 #ifdef USE_DRAM
-	PUCHAR Buffer;
-	Buffer = StoragePool->Buffer;
-	Buffer += Index * BLOCK_SIZE + Offset;
-	if ((Buffer + Len) <= (StoragePool->Buffer + StoragePool->Size*BLOCK_SIZE))
-		RtlCopyMemory(Buffer, Data, Len);
-	else
-		KdPrint(("%s: Access Error\n", __FUNCTION__));
+	RtlCopyMemory(StoragePool->Buffer + writeOffset.QuadPart, Data, Len);
+#else
+	ASSERT (NT_SUCCESS(IoDoRWRequestSync(
+		IRP_MJ_WRITE,
+		StoragePool->BlockDevice,
+		Data,
+		Len,
+		&writeOffset
+	)));
 #endif
 }
 
 VOID
-StoragePoolRead(PSTORAGE_POOL StoragePool, PVOID Data, ULONG Index, ULONG Offset, ULONG Len)
+StoragePoolRead(PSTORAGE_POOL StoragePool, PVOID Data, ULONG StartIndex, ULONG Offset, ULONG Len)
 {
+	LARGE_INTEGER	readOffset;
+	readOffset.QuadPart = StartIndex * BLOCK_SIZE + Offset + BLOCK_RESERVE;
+	ASSERT ((readOffset.QuadPart + Len) <= (StoragePool->TotalSize));
 #ifdef USE_DRAM
-	PUCHAR Buffer;
-	Buffer = StoragePool->Buffer;
-	Buffer += Index * BLOCK_SIZE + Offset;
-	if ((Buffer + Len) <= (StoragePool->Buffer + StoragePool->Size*BLOCK_SIZE))
-		RtlCopyMemory(Data, Buffer, Len);
-	else
-		KdPrint(("%s: Access Error", __FUNCTION__));
+	RtlCopyMemory(Data, StoragePool->Buffer + readOffset.QuadPart, Len);
+#else
+	ASSERT (NT_SUCCESS(IoDoRWRequestSync(
+		IRP_MJ_READ,
+		StoragePool->BlockDevice,
+		Data,
+		Len,
+		&readOffset
+	)));
 #endif
 }

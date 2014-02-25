@@ -47,8 +47,8 @@ struct command
 };
 struct command options[] =
 {
-	{"sa", "Start All Filters", IOCTL_DF_START_ALL},
-	{"qa", "Stop All Filters", IOCTL_DF_STOP_ALL},
+	//{"sa", "Start All Filters", IOCTL_DF_START_ALL},
+	//{"qa", "Stop All Filters", IOCTL_DF_STOP_ALL},
 	{"start", "Start One Filter", IOCTL_DF_START},
 	{"stop", "Stop One Filter", IOCTL_DF_STOP},
 	{"stat", "Get Statistic on One Volume", IOCTL_DF_GET_STAT},
@@ -124,6 +124,13 @@ int main(int argc, char *argv[])
 						scanf("%d%d", &iBuffer[0], &iBuffer[1]);
 						if (iBuffer[0] == sysDiskNumber && iBuffer[1] == sysPartitionNumber)
 							printf("Highly recommend not cache system volume!\n");
+					#ifndef USE_DRAM
+						if(strcmp(istr, "clear") && strcmp(istr, "stat"))
+						{
+							printf("Input Cache's DiskNumber PartitionNumber\n");
+							scanf("%d%d", &iBuffer[2], &iBuffer[3]);
+						}
+					#endif
 						printf("%s disk(%d) partition(%d)\n", istr, iBuffer[0], iBuffer[1]);
 					}
 					if ( DeviceIoControl(

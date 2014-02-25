@@ -93,7 +93,7 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		case IOCTL_DF_STOP_ALL:
 			Type = (IOCTL_DF_START_ALL == IrpSp->Parameters.DeviceIoControl.IoControlCode);
 			DBG_PRINT(DBG_TRACE_OPS, ("%s: %s All Filters\n", __FUNCTION__, Type?"Start":"Stop"));
-			DeviceObject = g_pDriverObject->DeviceObject;
+			/*DeviceObject = g_pDriverObject->DeviceObject;
 			while (DeviceObject != NULL)
 			{
 				DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
@@ -109,7 +109,7 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 					}
 					else if (DevExt->bIsProtected == FALSE)
 					{
-						if (InitCachePool(&DevExt->CachePool) == TRUE)
+						if (InitCachePool(&DevExt->CachePool, 1, 1) == TRUE)
 							DevExt->bIsProtected = TRUE;
 						else
 							KdPrint(("%s:%d-%d: Init Cache Pool Error\n", __FUNCTION__,
@@ -117,7 +117,7 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 					}
 				}
 				DeviceObject = DeviceObject->NextDevice;
-			}
+			}*/
 			COMPLETE_IRP(Irp, STATUS_SUCCESS);
 			return Irp->IoStatus.Status;
 		// Start or Stop One Filter
@@ -136,6 +136,10 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 				{
 					DBG_PRINT(DBG_TRACE_OPS, ("%s Filter on disk(%u) partition(%u)\n", Type?"Start":"Stop",
 						((ULONG32*)InputBuffer)[0], ((ULONG32*)InputBuffer)[1]));
+				#ifndef USE_DRAM
+					DBG_PRINT(DBG_TRACE_OPS, ("Use disk(%u) partition(%u) as Cache\n",
+						((ULONG32*)InputBuffer)[2], ((ULONG32*)InputBuffer)[3]));
+				#endif
 					if (Type == FALSE)
 					{
 						DevExt->CacheHit = 0;
@@ -146,7 +150,11 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 					}
 					else if (DevExt->bIsProtected == FALSE)
 					{
-						if (InitCachePool(&DevExt->CachePool) == TRUE)
+						if (InitCachePool(&DevExt->CachePool
+						#ifndef USE_DRAM
+							,((ULONG32*)InputBuffer)[2] ,((ULONG32*)InputBuffer)[3]
+						#endif
+							) == TRUE)
 							DevExt->bIsProtected = TRUE;
 						else
 							KdPrint(("%s:%d-%d: Init Cache Pool Error\n", __FUNCTION__,
@@ -240,8 +248,8 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 			break;
 		case IOCTL_DISK_COPY_DATA:
 			DBG_PRINT(DBG_TRACE_OPS, ("%s: IOCTL_DISK_COPY_DATA\n", __FUNCTION__));
-			// ... Flush back Cache
-			break;
+			COMPLETE_IRP(Irp, STATUS_UNSUCCESSFUL);
+			return Irp->IoStatus.Status;
 		default:
 			//DBG_PRINT(DBG_TRACE_OPS, ("%s: 0x%X\n", __FUNCTION__, IrpSp->Parameters.DeviceIoControl.IoControlCode));
 			break;

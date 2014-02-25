@@ -2,13 +2,21 @@
 #include "Heap.h"
 #include "Utils.h"
 
-BOOLEAN InitCachePool(PCACHE_POOL CachePool)
+BOOLEAN InitCachePool(PCACHE_POOL CachePool
+					#ifndef USE_DRAM
+						,ULONG DiskNum ,ULONG PartitionNum
+					#endif
+					)
 {
 	BOOLEAN ret;
 	CachePool->Used = 0;
 	CachePool->Size = (CACHE_POOL_SIZE << 20)/(BLOCK_SIZE);
 	CachePool->bpt_root = NULL;
-	ret = InitStoragePool(&CachePool->Storage, CachePool->Size);
+	ret = InitStoragePool(&CachePool->Storage, CachePool->Size
+		#ifndef USE_DRAM
+			, DiskNum, PartitionNum
+		#endif
+		);
 	if (ret == FALSE)
 		return ret;
 	ret = InitHeap(&CachePool->Heap, CachePool->Size);
