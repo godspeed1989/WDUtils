@@ -125,7 +125,7 @@ int main(int argc, char *argv[])
 						if (iBuffer[0] == sysDiskNumber && iBuffer[1] == sysPartitionNumber)
 							printf("Highly recommend not cache system volume!\n");
 					#ifndef USE_DRAM
-						if(strcmp(istr, "clear") && strcmp(istr, "stat"))
+						if (strcmp(istr, "start") == 0)
 						{
 							printf("Input Cache's DiskNumber PartitionNumber\n");
 							scanf("%d%d", &iBuffer[2], &iBuffer[3]);
