@@ -2,6 +2,7 @@
 #include "Heap.h"
 
 #ifdef USE_LFU
+
 BOOLEAN InitCachePool(PCACHE_POOL CachePool
 					#ifndef USE_DRAM
 						,ULONG DiskNum ,ULONG PartitionNum
@@ -36,10 +37,15 @@ VOID DestroyCachePool(PCACHE_POOL CachePool)
 	DestroyHeap(&CachePool->Heap);
 }
 
+BOOLEAN _IsFull(PCACHE_POOL CachePool)
+{
+	return (CachePool->Size == CachePool->Used);
+}
+
 /**
  * Query a Cache Block from Pool By its Index
  */
-BOOLEAN QueryPoolByIndex(PCACHE_POOL CachePool, LONGLONG Index, PCACHE_BLOCK *ppBlock)
+BOOLEAN _QueryPoolByIndex(PCACHE_POOL CachePool, LONGLONG Index, PCACHE_BLOCK *ppBlock)
 {
 	// B+ Tree Find by Index
 	*ppBlock = Find_Record(CachePool->bpt_root, Index);
@@ -49,7 +55,7 @@ BOOLEAN QueryPoolByIndex(PCACHE_POOL CachePool, LONGLONG Index, PCACHE_BLOCK *pp
 		return TRUE;
 }
 
-VOID IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
+VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 {
 	HeapIncreaseValue(&CachePool->Heap, pBlock->HeapIndex, 1);
 }
@@ -57,10 +63,10 @@ VOID IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 /**
  * Add one Block to Cache Pool, When Pool is not Full
  */
-BOOLEAN AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
+BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 {
 	PCACHE_BLOCK pBlock;
-	if((pBlock = GetFreeBlock(CachePool)) != NULL &&
+	if((pBlock = __GetFreeBlock(CachePool)) != NULL &&
 		TRUE == HeapInsert(&CachePool->Heap, pBlock))
 	{
 		pBlock->Modified = FALSE;
@@ -87,14 +93,14 @@ BOOLEAN AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 /**
  * Delete one Block from Cache Pool and Free it
  */
-VOID DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
+VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 {
 	PCACHE_BLOCK pBlock;
-	if (QueryPoolByIndex(CachePool, Index, &pBlock) == TRUE)
+	if (_QueryPoolByIndex(CachePool, Index, &pBlock) == TRUE)
 	{
 		StoragePoolFree(&CachePool->Storage, pBlock->StorageIndex);
 		HeapDelete(&CachePool->Heap, pBlock->HeapIndex);
-		CachePool->bpt_root = Delete(CachePool->bpt_root, Index, TRUE);		
+		CachePool->bpt_root = Delete(CachePool->bpt_root, Index, TRUE);
 		CachePool->Used--;
 	}
 }
@@ -102,7 +108,7 @@ VOID DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 /**
  * Find a Cache Block to Replace
  */
-VOID FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
+VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 {
 	PCACHE_BLOCK pBlock;
 
@@ -121,4 +127,5 @@ VOID FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 	HeapZeroValue(&CachePool->Heap, pBlock->HeapIndex);
 	CachePool->bpt_root = Insert(CachePool->bpt_root, Index, pBlock);
 }
+
 #endif

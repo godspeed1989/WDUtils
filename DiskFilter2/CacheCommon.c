@@ -17,10 +17,10 @@ void Free_Record( record * r )
  /**
  * Get a Free Block From Cache Pool
  */
-PCACHE_BLOCK GetFreeBlock(PCACHE_POOL CachePool)
+PCACHE_BLOCK __GetFreeBlock(PCACHE_POOL CachePool)
 {
 	PCACHE_BLOCK pBlock;
-	if (IsFull(CachePool) == FALSE)
+	if (_IsFull(CachePool) == FALSE)
 	{
 		pBlock = (PCACHE_BLOCK) ExAllocatePoolWithTag (
 						NonPagedPool,
@@ -67,17 +67,17 @@ VOID UpdataCachePool(
 		for (i = 0; i < Length; i++)
 		{
 			// Still have empty cache block
-			if (IsFull(CachePool) == FALSE)
+			if (_IsFull(CachePool) == FALSE)
 			{
 				// Not to duplicate
-				if(QueryPoolByIndex(CachePool, Offset+i, &pBlock) == FALSE)
-					AddNewBlockToPool(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
+				if(_QueryPoolByIndex(CachePool, Offset+i, &pBlock) == FALSE)
+					_AddNewBlockToPool(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
 				else
 				{
 				#ifdef READ_VERIFY
 					DO_READ_VERIFY(&CachePool->Storage, pBlock, LowerDeviceObject);
 				#endif
-					IncreaseBlockReference(CachePool, pBlock);
+					_IncreaseBlockReference(CachePool, pBlock);
 				}
 			}
 			else
@@ -87,14 +87,14 @@ VOID UpdataCachePool(
 		while (i < Length)
 		{
 			// Not to duplicate
-			if(QueryPoolByIndex(CachePool, Offset+i, &pBlock) == FALSE)
-				FindBlockToReplace(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
+			if(_QueryPoolByIndex(CachePool, Offset+i, &pBlock) == FALSE)
+				_FindBlockToReplace(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
 			else
 			{
 			#ifdef READ_VERIFY
 				DO_READ_VERIFY(&CachePool->Storage, pBlock, LowerDeviceObject);
 			#endif
-				IncreaseBlockReference(CachePool, pBlock);
+				_IncreaseBlockReference(CachePool, pBlock);
 			}
 			i++;
 		}
@@ -102,13 +102,13 @@ VOID UpdataCachePool(
 	else /* Write */
 	{
 		if(front_broken == TRUE)
-			DeleteOneBlockFromPool(CachePool, Offset-1);
+			_DeleteOneBlockFromPool(CachePool, Offset-1);
 		for (i = 0; i < Length; i++)
 		{
 		#if 0
-			DeleteOneBlockFromPool(CachePool, Offset+i);
+			_DeleteOneBlockFromPool(CachePool, Offset+i);
 		#else
-			if(QueryPoolByIndex(CachePool, Offset+i, &pBlock) == TRUE)
+			if(_QueryPoolByIndex(CachePool, Offset+i, &pBlock) == TRUE)
 			{
 				// Update
 				StoragePoolWrite (
@@ -118,23 +118,23 @@ VOID UpdataCachePool(
 					BLOCK_SIZE
 				);
 				pBlock->Modified = TRUE;
-				IncreaseBlockReference(CachePool, pBlock);
+				_IncreaseBlockReference(CachePool, pBlock);
 				continue;
 			}
-			if (IsFull(CachePool) == FALSE)
+			if (_IsFull(CachePool) == FALSE)
 			{
-				AddNewBlockToPool(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
+				_AddNewBlockToPool(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
 				continue;
 			}
 			else
 			{
-				FindBlockToReplace(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
+				_FindBlockToReplace(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
 				continue;
 			}
 		#endif
 		}
 		if (end_broken == TRUE)
-			DeleteOneBlockFromPool(CachePool, Offset+Length);
+			_DeleteOneBlockFromPool(CachePool, Offset+Length);
 	}
 }
 
@@ -182,11 +182,11 @@ BOOLEAN QueryAndCopyFromCachePool (
 			len									\
 		);										\
 		Buf += len;								\
-		IncreaseBlockReference(CachePool, ppInternalBlocks[bi]);
+		_IncreaseBlockReference(CachePool, ppInternalBlocks[bi]);
 
 	if (front_broken == TRUE)
 	{
-		if (QueryPoolByIndex(CachePool, Offset-1, ppInternalBlocks+0) == FALSE)
+		if (_QueryPoolByIndex(CachePool, Offset-1, ppInternalBlocks+0) == FALSE)
 			goto l_error;
 		else
 		{
@@ -200,7 +200,7 @@ BOOLEAN QueryAndCopyFromCachePool (
 	// Query Cache Pool If it is Fully Matched
 	for (i = 0; i < Length; i++)
 	{
-		if (QueryPoolByIndex(CachePool, Offset+i, ppInternalBlocks+i) == FALSE)
+		if (_QueryPoolByIndex(CachePool, Offset+i, ppInternalBlocks+i) == FALSE)
 			goto l_error;
 	}
 	// Copy From Cache Pool
@@ -214,7 +214,7 @@ BOOLEAN QueryAndCopyFromCachePool (
 
 	if (end_broken == TRUE)
 	{
-		if (QueryPoolByIndex(CachePool, Offset+Length, ppInternalBlocks+0) == FALSE)
+		if (_QueryPoolByIndex(CachePool, Offset+Length, ppInternalBlocks+0) == FALSE)
 			goto l_error;
 		else
 		{

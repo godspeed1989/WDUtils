@@ -5,7 +5,7 @@
 #include "Storage.h"
 
 #define READ_VERIFY
-#define USE_LFU
+#define USE_SLFU
 
 #define _READ_								TRUE
 #define _WRITE_								FALSE
@@ -17,6 +17,9 @@ typedef struct _CACHE_BLOCK
 	LONGLONG			Index;
 	ULONG				StorageIndex;
 	ULONG				HeapIndex;
+#ifdef USE_SLFU
+	ULONG				Protected;
+#endif
 }CACHE_BLOCK, *PCACHE_BLOCK;
 
 #define HEAP_DAT_T CACHE_BLOCK
@@ -35,13 +38,22 @@ typedef struct _Heap
 
 typedef struct _CACHE_POOL
 {
-	ULONG				Size;
-	ULONG				Used;
-	STORAGE_POOL		Storage;
+	ULONG			Size;
+	ULONG			Used;
+	STORAGE_POOL	Storage;
 #ifdef USE_LFU
-	Heap				Heap;
-	node*				bpt_root;
-#else
+	Heap			Heap;
+	node*			bpt_root;
+#endif
+#ifdef USE_SLFU
+	ULONG			ProbationarySize;
+	ULONG			ProbationaryUsed;
+	Heap			ProbationaryHeap;
+	node*			Probationary_bpt_root;
+	ULONG			ProtectedSize;
+	ULONG			ProtectedUsed;
+	Heap			ProtectedHeap;
+	node*			Protected_bpt_root;
 #endif
 }CACHE_POOL, *PCACHE_POOL;
 
@@ -87,23 +99,15 @@ VOID
 	#endif
 	);
 /**
- * Internal Functions
+ * Internal Functions Used by Common Function
  */
-PCACHE_BLOCK	GetFreeBlock(PCACHE_POOL CachePool);
-BOOLEAN			AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data);
-VOID			DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index);
-BOOLEAN			QueryPoolByIndex(PCACHE_POOL CachePool, LONGLONG Index, PCACHE_BLOCK *ppBlock);
-VOID			FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data);
-VOID			IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock);
-	
-static BOOLEAN IsEmpty(PCACHE_POOL CachePool)
-{
-	return (0 == CachePool->Used);
-}
-static BOOLEAN IsFull(PCACHE_POOL CachePool)
-{
-	return (CachePool->Size == CachePool->Used);
-}
+PCACHE_BLOCK	__GetFreeBlock(PCACHE_POOL CachePool);
+BOOLEAN			_AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data);
+VOID			_DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index);
+BOOLEAN			_QueryPoolByIndex(PCACHE_POOL CachePool, LONGLONG Index, PCACHE_BLOCK *ppBlock);
+VOID			_FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data);
+VOID			_IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock);
+BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 
 #define detect_broken(Off,Len,front_broken,end_broken,front_skip,end_cut)	\
 		do{												\

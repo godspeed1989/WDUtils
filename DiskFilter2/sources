@@ -10,6 +10,7 @@ SOURCES=DiskFilter.c	\
 		bpt_find.c		\
 		bpt_util.c		\
 		CacheLFU.c		\
+		CacheSLFU.c		\
 		CacheCommon.c	\
 		Heap.c			\
 		Storage.c		\
