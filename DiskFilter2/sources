@@ -9,7 +9,8 @@ SOURCES=DiskFilter.c	\
 		bpt_insert.c	\
 		bpt_find.c		\
 		bpt_util.c		\
-		Cache.c			\
+		CacheLFU.c		\
+		CacheCommon.c	\
 		Heap.c			\
 		Storage.c		\
 		md5.c

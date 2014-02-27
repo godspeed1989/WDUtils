@@ -5,6 +5,7 @@
 #include "Storage.h"
 
 #define READ_VERIFY
+#define USE_LFU
 
 #define _READ_								TRUE
 #define _WRITE_								FALSE
@@ -36,11 +37,17 @@ typedef struct _CACHE_POOL
 {
 	ULONG				Size;
 	ULONG				Used;
-	node*				bpt_root;
 	STORAGE_POOL		Storage;
+#ifdef USE_LFU
 	Heap				Heap;
+	node*				bpt_root;
+#else
+#endif
 }CACHE_POOL, *PCACHE_POOL;
 
+/**
+ * Export Functions
+ */
 BOOLEAN
 	InitCachePool (
 		PCACHE_POOL CachePool
@@ -79,6 +86,24 @@ VOID
 		,ULONG PartitionNumber
 	#endif
 	);
+/**
+ * Internal Functions
+ */
+PCACHE_BLOCK	GetFreeBlock(PCACHE_POOL CachePool);
+BOOLEAN			AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data);
+VOID			DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index);
+BOOLEAN			QueryPoolByIndex(PCACHE_POOL CachePool, LONGLONG Index, PCACHE_BLOCK *ppBlock);
+VOID			FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data);
+VOID			IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock);
+	
+static BOOLEAN IsEmpty(PCACHE_POOL CachePool)
+{
+	return (0 == CachePool->Used);
+}
+static BOOLEAN IsFull(PCACHE_POOL CachePool)
+{
+	return (CachePool->Size == CachePool->Used);
+}
 
 #define detect_broken(Off,Len,front_broken,end_broken,front_skip,end_cut)	\
 		do{												\
@@ -101,7 +126,7 @@ VOID
 		}while(0);
 
 #define DO_READ_VERIFY(Storage,pBlock,PhysicalDeviceObject)						\
-		while (1 && g_bDataVerify)												\
+		while (g_bDataVerify)													\
 		{																		\
 			NTSTATUS Status;													\
 			ULONG matched;														\
