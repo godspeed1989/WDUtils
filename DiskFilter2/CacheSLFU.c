@@ -99,26 +99,25 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 			HeapDelete(&CachePool->ProtectedHeap, _pBlock->HeapIndex);
 			CachePool->Protected_bpt_root = Delete(CachePool->Protected_bpt_root, _pBlock->Index, FALSE);
 			// Move to Probationary
-			if (_IsFull(CachePool) == TRUE)
-			{
-				Top = GetHeapTop(&CachePool->ProbationaryHeap);
-				_DeleteOneBlockFromPool(CachePool, Top->Index);
-			}
+			// Probationary Obviously Not Full for We just Remove one from it
 			ASSERT(TRUE == HeapInsert(&CachePool->ProbationaryHeap, _pBlock));
 			CachePool->Probationary_bpt_root = Insert(CachePool->Probationary_bpt_root, _pBlock->Index, _pBlock);
 		}
 		else
+		{
 			CachePool->ProtectedUsed++;
+			CachePool->ProbationaryUsed--;
+		}
 		pBlock->Protected = TRUE;
 		// Add to Protected
 		ASSERT(TRUE == HeapInsert(&CachePool->ProtectedHeap, pBlock));
-		HeapIncreaseValue(&CachePool->ProtectedHeap, pBlock->HeapIndex, 1);
 		CachePool->Protected_bpt_root = Insert(CachePool->Protected_bpt_root, pBlock->Index, pBlock);
 	}
 }
 
 /**
  * Add one Block to Cache Pool, When Pool is not Full
+ * (Add to Probationary Segment)
  */
 BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 {
@@ -176,6 +175,7 @@ VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 
 /**
  * Find a Cache Block to Replace for a Non-existed Block
+ * (Find From Probationary Segment)
  */
 VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 {
