@@ -12,15 +12,17 @@ VOID HeapMake (PHeap Heap);
 
 VOID HeapSort (PHeap Heap);
 
-BOOLEAN HeapInsert (PHeap Heap, HEAP_DAT_T *pData);
+BOOLEAN HeapInsert (PHeap Heap, HEAP_DAT_T *pData, HEAP_VAL_T Value);
 
 VOID HeapDelete (PHeap Heap, ULONG HeapIndex);
 
 VOID HeapZeroValue (PHeap Heap, ULONG HeapIndex);
 
-VOID HeapIncreaseValue (PHeap Heap, ULONG HeapIndex, ULONG Inc);
+VOID HeapIncreaseValue (PHeap Heap, ULONG HeapIndex, HEAP_VAL_T Inc);
 
-VOID HeapDecreaseValue (PHeap Heap, ULONG HeapIndex, ULONG Dec);
+VOID HeapDecreaseValue (PHeap Heap, ULONG HeapIndex, HEAP_VAL_T Dec);
+
+VOID HeapUpdateValue (PHeap Heap, ULONG HeapIndex, HEAP_VAL_T NewValue);
 
 HEAP_DAT_T* GetHeapTop(PHeap Heap);
 

@@ -77,7 +77,7 @@ HeapSiftDown(PHeap Heap, ULONG HeapIndex)
 }
 
 BOOLEAN
-HeapInsert(PHeap Heap, HEAP_DAT_T *pData)
+HeapInsert(PHeap Heap, HEAP_DAT_T *pData, HEAP_VAL_T Value)
 {
 	PHeapEntry entry = NULL;
 	if (Heap->Used == Heap->Size)
@@ -86,7 +86,7 @@ HeapInsert(PHeap Heap, HEAP_DAT_T *pData)
 	if (entry == NULL)
 		return FALSE;
 
-	entry->Value = 0;
+	entry->Value = Value;
 	entry->pData = pData;
 	pData->HeapIndex = Heap->Used;
 	Heap->Used++;
@@ -148,7 +148,6 @@ HeapSort(PHeap Heap)
 	Heap->Used = Used;
 }
 
-
 VOID
 HeapZeroValue(PHeap Heap, ULONG HeapIndex)
 {
@@ -164,8 +163,10 @@ HeapZeroValue(PHeap Heap, ULONG HeapIndex)
 }
 
 VOID
-HeapIncreaseValue(PHeap Heap, ULONG HeapIndex, ULONG Inc)
+HeapIncreaseValue(PHeap Heap, ULONG HeapIndex, HEAP_VAL_T Inc)
 {
+	if (Inc == 0)
+		return;
 	Heap->Entries[HeapIndex]->Value += Inc;
 	#ifdef MIN_HEAP
 		HeapSiftDown(Heap, HeapIndex);
@@ -175,7 +176,7 @@ HeapIncreaseValue(PHeap Heap, ULONG HeapIndex, ULONG Inc)
 }
 
 VOID
-HeapDecreaseValue(PHeap Heap, ULONG HeapIndex, ULONG Dec)
+HeapDecreaseValue(PHeap Heap, ULONG HeapIndex, HEAP_VAL_T Dec)
 {
 	if (Heap->Entries[HeapIndex]->Value == 0 || Dec == 0)
 		return;
@@ -188,6 +189,16 @@ HeapDecreaseValue(PHeap Heap, ULONG HeapIndex, ULONG Dec)
 	#else
 		HeapSiftDown(Heap, HeapIndex);
 	#endif
+}
+
+VOID
+HeapUpdateValue(PHeap Heap, ULONG HeapIndex, HEAP_VAL_T NewValue)
+{
+	HEAP_VAL_T OldValue = Heap->Entries[HeapIndex]->Value;
+	if (OldValue < NewValue)
+		HeapIncreaseValue(Heap, HeapIndex, NewValue - OldValue);
+	else
+		HeapDecreaseValue(Heap, HeapIndex, OldValue - NewValue);
 }
 
 HEAP_DAT_T*

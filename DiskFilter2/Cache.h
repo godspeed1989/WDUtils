@@ -5,7 +5,10 @@
 #include "Storage.h"
 
 #define READ_VERIFY
-#define USE_SLFU
+#define USE_LRU
+//#define USE_LFU
+//#define USE_SLRU
+//#define USE_SLFU
 
 #define _READ_								TRUE
 #define _WRITE_								FALSE
@@ -22,10 +25,15 @@ typedef struct _CACHE_BLOCK
 #endif
 }CACHE_BLOCK, *PCACHE_BLOCK;
 
+#if defined(USE_LFU) || defined(USE_SLFU)
+#  define HEAP_VAL_T LONG
+#elif  defined(USE_LRU) || defined(USE_SLRU)
+#  define HEAP_VAL_T LONGLONG
+#endif
 #define HEAP_DAT_T CACHE_BLOCK
 typedef struct _HeapEntry
 {
-	ULONG Value;
+	HEAP_VAL_T Value;
 	HEAP_DAT_T* pData;
 }HeapEntry, *PHeapEntry;
 
@@ -41,7 +49,7 @@ typedef struct _CACHE_POOL
 	ULONG			Size;
 	ULONG			Used;
 	STORAGE_POOL	Storage;
-#ifdef USE_LFU
+#if defined(USE_LFU) || defined(USE_LRU)
 	Heap			Heap;
 	node*			bpt_root;
 #endif

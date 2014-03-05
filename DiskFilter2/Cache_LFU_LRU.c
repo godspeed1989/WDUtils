@@ -1,7 +1,12 @@
 #include "Cache.h"
 #include "Heap.h"
 
-#ifdef USE_LFU
+#if defined(USE_LFU) || defined(USE_LRU)
+
+#ifdef USE_LRU
+#include <Ntddk.h>
+#define QueryTickCount(tc) KeQueryTickCount(tc)
+#endif
 
 BOOLEAN InitCachePool(PCACHE_POOL CachePool
 					#ifndef USE_DRAM
@@ -49,7 +54,7 @@ BOOLEAN _QueryPoolByIndex(PCACHE_POOL CachePool, LONGLONG Index, PCACHE_BLOCK *p
 {
 	// B+ Tree Find by Index
 	*ppBlock = Find_Record(CachePool->bpt_root, Index);
-	if(NULL == *ppBlock)
+	if (NULL == *ppBlock)
 		return FALSE;
 	else
 		return TRUE;
@@ -57,7 +62,13 @@ BOOLEAN _QueryPoolByIndex(PCACHE_POOL CachePool, LONGLONG Index, PCACHE_BLOCK *p
 
 VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 {
+#if defined(USE_LRU)
+	LARGE_INTEGER TickCount;
+	QueryTickCount(&TickCount);
+	HeapUpdateValue(&CachePool->Heap, pBlock->HeapIndex, TickCount.QuadPart);
+#elif defined(USE_LFU)
 	HeapIncreaseValue(&CachePool->Heap, pBlock->HeapIndex, 1);
+#endif
 }
 
 /**
@@ -66,8 +77,15 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 {
 	PCACHE_BLOCK pBlock;
+#if defined(USE_LRU)
+	LARGE_INTEGER TickCount;
+	QueryTickCount(&TickCount);
 	if((pBlock = __GetFreeBlock(CachePool)) != NULL &&
-		TRUE == HeapInsert(&CachePool->Heap, pBlock))
+		TRUE == HeapInsert(&CachePool->Heap, pBlock, TickCount.QuadPart))
+#elif defined(USE_LFU)
+	if((pBlock = __GetFreeBlock(CachePool)) != NULL &&
+		TRUE == HeapInsert(&CachePool->Heap, pBlock, 0))
+#endif
 	{
 		pBlock->Modified = FALSE;
 		pBlock->Index = Index;
@@ -111,7 +129,9 @@ VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 {
 	PCACHE_BLOCK pBlock;
-
+#if defined(USE_LRU)
+	LARGE_INTEGER TickCount;
+#endif
 	pBlock = GetHeapTop(&CachePool->Heap);
 	if (NULL == pBlock)
 		return;
@@ -124,7 +144,12 @@ VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 		Data,
 		BLOCK_SIZE
 	);
+#if defined(USE_LRU)
+	QueryTickCount(&TickCount);
+	HeapUpdateValue(&CachePool->Heap, pBlock->HeapIndex, TickCount.QuadPart);
+#elif defined(USE_LFU)
 	HeapZeroValue(&CachePool->Heap, pBlock->HeapIndex);
+#endif
 	CachePool->bpt_root = Insert(CachePool->bpt_root, Index, pBlock);
 }
 

@@ -100,7 +100,7 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 			CachePool->Protected_bpt_root = Delete(CachePool->Protected_bpt_root, _pBlock->Index, FALSE);
 			// Move to Probationary
 			// Probationary Obviously Not Full for We just Remove one from it
-			ASSERT(TRUE == HeapInsert(&CachePool->ProbationaryHeap, _pBlock));
+			ASSERT(TRUE == HeapInsert(&CachePool->ProbationaryHeap, _pBlock, 1));
 			CachePool->Probationary_bpt_root = Insert(CachePool->Probationary_bpt_root, _pBlock->Index, _pBlock);
 		}
 		else
@@ -110,7 +110,7 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 		}
 		pBlock->Protected = TRUE;
 		// Add to Protected
-		ASSERT(TRUE == HeapInsert(&CachePool->ProtectedHeap, pBlock));
+		ASSERT(TRUE == HeapInsert(&CachePool->ProtectedHeap, pBlock, 1));
 		CachePool->Protected_bpt_root = Insert(CachePool->Protected_bpt_root, pBlock->Index, pBlock);
 	}
 }
@@ -123,7 +123,7 @@ BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 {
 	PCACHE_BLOCK pBlock;
 	if((pBlock = __GetFreeBlock(CachePool)) != NULL &&
-		TRUE == HeapInsert(&CachePool->ProbationaryHeap, pBlock))
+		TRUE == HeapInsert(&CachePool->ProbationaryHeap, pBlock, 0))
 	{
 		pBlock->Modified = FALSE;
 		pBlock->Index = Index;
