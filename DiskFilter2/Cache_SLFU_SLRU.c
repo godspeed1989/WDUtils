@@ -1,7 +1,12 @@
 #include "Cache.h"
 #include "Heap.h"
 
-#ifdef USE_SLFU
+#if defined(USE_SLFU) || defined(USE_SLRU)
+
+#ifdef USE_SLRU
+#include <Ntddk.h>
+#define QueryTickCount(tc) KeQueryTickCount(tc)
+#endif
 
 #define PROTECT_RATIO    4
 BOOLEAN InitCachePool(PCACHE_POOL CachePool
@@ -83,6 +88,9 @@ BOOLEAN _QueryPoolByIndex(PCACHE_POOL CachePool, LONGLONG Index, PCACHE_BLOCK *p
 VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 {
 	PCACHE_BLOCK _pBlock, Top;
+#if defined(USE_SLRU)
+	LARGE_INTEGER TickCount;
+#endif
 	if (pBlock->Protected == TRUE)
 	{
 		HeapIncreaseValue(&CachePool->ProtectedHeap, pBlock->HeapIndex, 1);
@@ -100,7 +108,12 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 			CachePool->Protected_bpt_root = Delete(CachePool->Protected_bpt_root, _pBlock->Index, FALSE);
 			// Move to Probationary
 			// Probationary Obviously Not Full for We just Remove one from it
+		#if defined(USE_SLRU)
+			QueryTickCount(&TickCount);
+			ASSERT(TRUE == HeapInsert(&CachePool->ProbationaryHeap, _pBlock, TickCount.QuadPart));
+		#elif defined(USE_SLFU)
 			ASSERT(TRUE == HeapInsert(&CachePool->ProbationaryHeap, _pBlock, 1));
+		#endif
 			CachePool->Probationary_bpt_root = Insert(CachePool->Probationary_bpt_root, _pBlock->Index, _pBlock);
 		}
 		else
@@ -110,7 +123,12 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 		}
 		pBlock->Protected = TRUE;
 		// Add to Protected
+	#if defined(USE_SLRU)
+		QueryTickCount(&TickCount);
+		ASSERT(TRUE == HeapInsert(&CachePool->ProtectedHeap, pBlock, TickCount.QuadPart));
+	#elif defined(USE_SLFU)
 		ASSERT(TRUE == HeapInsert(&CachePool->ProtectedHeap, pBlock, 1));
+	#endif
 		CachePool->Protected_bpt_root = Insert(CachePool->Protected_bpt_root, pBlock->Index, pBlock);
 	}
 }
@@ -122,8 +140,15 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 {
 	PCACHE_BLOCK pBlock;
+#if defined(USE_SLRU)
+	LARGE_INTEGER TickCount;
+	QueryTickCount(&TickCount);
+	if((pBlock = __GetFreeBlock(CachePool)) != NULL &&
+		TRUE == HeapInsert(&CachePool->ProbationaryHeap, pBlock, TickCount.QuadPart))
+#elif defined(USE_SLFU)
 	if((pBlock = __GetFreeBlock(CachePool)) != NULL &&
 		TRUE == HeapInsert(&CachePool->ProbationaryHeap, pBlock, 0))
+#endif
 	{
 		pBlock->Modified = FALSE;
 		pBlock->Index = Index;
@@ -180,7 +205,9 @@ VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 {
 	PCACHE_BLOCK pBlock;
-
+#if defined(USE_SLRU)
+	LARGE_INTEGER TickCount;
+#endif
 	pBlock = GetHeapTop(&CachePool->ProbationaryHeap);
 	if (NULL == pBlock)
 		return;
@@ -194,7 +221,12 @@ VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 		Data,
 		BLOCK_SIZE
 	);
+#if defined(USE_SLRU)
+	QueryTickCount(&TickCount);
+	HeapUpdateValue(&CachePool->ProbationaryHeap, pBlock->HeapIndex, TickCount.QuadPart);
+#elif defined(USE_SLFU)
 	HeapZeroValue(&CachePool->ProbationaryHeap, pBlock->HeapIndex);
+#endif
 	CachePool->Probationary_bpt_root = Insert(CachePool->Probationary_bpt_root, Index, pBlock);
 }
 
