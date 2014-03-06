@@ -7,8 +7,8 @@
 #define READ_VERIFY
 //#define USE_LRU
 //#define USE_LFU
-//#define USE_SLRU
-#define USE_SLFU
+#define USE_SLRU
+//#define USE_SLFU
 
 #define _READ_								TRUE
 #define _WRITE_								FALSE
@@ -20,7 +20,7 @@ typedef struct _CACHE_BLOCK
 	LONGLONG			Index;
 	ULONG				StorageIndex;
 	ULONG				HeapIndex;
-#ifdef USE_SLFU
+#if defined(USE_SLFU) || defined(USE_SLRU)
 	ULONG				Protected;
 #endif
 }CACHE_BLOCK, *PCACHE_BLOCK;
@@ -53,7 +53,7 @@ typedef struct _CACHE_POOL
 	Heap			Heap;
 	node*			bpt_root;
 #endif
-#ifdef USE_SLFU
+#if defined(USE_SLFU) || defined(USE_SLRU)
 	ULONG			ProbationarySize;
 	ULONG			ProbationaryUsed;
 	Heap			ProbationaryHeap;
