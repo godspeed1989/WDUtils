@@ -7,8 +7,9 @@
 #define READ_VERIFY
 //#define USE_LRU
 //#define USE_LFU
-#define USE_SLRU
+//#define USE_SLRU
 //#define USE_SLFU
+#define USE_OCP
 
 #define _READ_								TRUE
 #define _WRITE_								FALSE
@@ -23,8 +24,13 @@ typedef struct _CACHE_BLOCK
 	defined(USE_SLFU) || defined(USE_SLRU)
 	ULONG				HeapIndex;
 #endif
-#if defined(USE_SLFU) || defined(USE_SLRU)
+#if defined(USE_SLFU) || defined(USE_SLRU) || defined(USE_OCP)
 	ULONG				Protected;
+#endif
+#if defined(USE_OCP)
+	CACHE_BLOCK*		Prior;
+	CACHE_BLOCK*		Next;
+	ULONG				ReferenceCount;
 #endif
 }CACHE_BLOCK, *PCACHE_BLOCK;
 
@@ -65,6 +71,17 @@ typedef struct _CACHE_POOL
 	ULONG			ProtectedUsed;
 	Heap			ProtectedHeap;
 	node*			Protected_bpt_root;
+#endif
+#if defined(USE_OCP)
+	CACHE_BLOCK*	HotListHead;
+	CACHE_BLOCK*	HotListTail;
+	ULONG			HotSize;
+	ULONG			HotUsed;
+	CACHE_BLOCK*	ColdListHead;
+	CACHE_BLOCK*	ColdListTail;
+	ULONG			HotSize;
+	ULONG			HotUsed;
+	node*			bpt_root;
 #endif
 }CACHE_POOL, *PCACHE_POOL;
 

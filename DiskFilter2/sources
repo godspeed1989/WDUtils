@@ -11,6 +11,7 @@ SOURCES=DiskFilter.c			\
 		bpt_util.c				\
 		Cache_LFU_LRU.c			\
 		Cache_SLFU_SLRU.c		\
+		Cache_OCP.c				\
 		CacheCommon.c			\
 		Heap.c					\
 		Storage.c				\
