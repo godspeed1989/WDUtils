@@ -19,7 +19,10 @@ typedef struct _CACHE_BLOCK
 	BOOLEAN				Modified;
 	LONGLONG			Index;
 	ULONG				StorageIndex;
+#if defined(USE_LFU) || defined(USE_LRU) || \
+	defined(USE_SLFU) || defined(USE_SLRU)
 	ULONG				HeapIndex;
+#endif
 #if defined(USE_SLFU) || defined(USE_SLRU)
 	ULONG				Protected;
 #endif
