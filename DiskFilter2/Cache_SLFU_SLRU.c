@@ -199,7 +199,7 @@ VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 }
 
 /**
- * Find a Cache Block to Replace for a Non-existed Block
+ * Find a Cache Block to Replace when Pool is Full
  * (Find From Probationary Segment)
  */
 VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)

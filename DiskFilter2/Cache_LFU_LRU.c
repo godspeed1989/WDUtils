@@ -124,7 +124,7 @@ VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 }
 
 /**
- * Find a Cache Block to Replace
+ * Find a Cache Block to Replace when Pool is Full
  */
 VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 {

@@ -28,8 +28,7 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 			, DiskNum, PartitionNum
 		#endif
 		);
-	if (ret == FALSE)
-		return ret;
+	return ret;
 }
 
 VOID DestroyCachePool(PCACHE_POOL CachePool)
@@ -68,11 +67,30 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 {
 	pBlock->ReferenceCount++;
 	// Move it to the head of list
-	if (pBlock->Protected == TRUE)
+	if (pBlock->Protected == TRUE && pBlock != CachePool->HotListHead)
 	{
+		pBlock->Prior->Next = pBlock->Next;
+		if (pBlock->Next != NULL)
+			pBlock->Next->Prior = pBlock->Prior;
+		else /* pBlock is the tail */
+			CachePool->HotListTail = pBlock->Prior;
+		pBlock->Prior = NULL;
+		pBlock->Next = CachePool->HotListHead;
+		CachePool->HotListHead->Prior = pBlock;
+		CachePool->HotListHead = pBlock;
 	}
-	else
-	{}
+	else if (pBlock != CachePool->ColdListHead)
+	{
+		pBlock->Prior->Next = pBlock->Next;
+		if (pBlock->Next != NULL)
+			pBlock->Next->Prior = pBlock->Prior;
+		else /* pBlock is the tail */
+			CachePool->ColdListTail = pBlock->Prior;
+		pBlock->Prior = NULL;
+		pBlock->Next = CachePool->ColdListHead;
+		CachePool->ColdListHead->Prior = pBlock;
+		CachePool->ColdListHead = pBlock;
+	}
 }
 
 /**
@@ -82,7 +100,7 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 {
 	PCACHE_BLOCK pBlock;
-	if (pBlock = __GetFreeBlock(CachePool)) != NULL)
+	if ((pBlock = __GetFreeBlock(CachePool)) != NULL)
 	{
 		pBlock->Modified = FALSE;
 		pBlock->Index = Index;
@@ -98,12 +116,12 @@ BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 		);
 		CachePool->Used++;
 		CachePool->ColdUsed++;
-		// Insert ot Cold List Head
+		// Insert to Cold List Head
 		if (CachePool->ColdListHead == NULL)
 			CachePool->ColdListHead = CachePool->ColdListTail = pBlock;
 		else
 		{
-			CachePool->ColdListHead->Next = pBlock;
+			CachePool->ColdListHead->Prior = pBlock;
 			pBlock->Next = CachePool->ColdListHead;
 			CachePool->ColdListHead = pBlock;
 		}
@@ -119,28 +137,104 @@ BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
  */
 VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 {
-	// !!!!!!!!!!!!! We should never delete a block in OCP !!!!!!
-	// Just insert to replace, and write back dirty
 	PCACHE_BLOCK pBlock;
-	ASSERT(0 == 1);
 	if (_QueryPoolByIndex(CachePool, Index, &pBlock) == TRUE)
 	{
+		if (pBlock->Prior != NULL)
+			pBlock->Prior->Next = pBlock->Next;
+		else /* is the head */
+		{
+			if (pBlock->Protected == TRUE)
+				CachePool->HotListHead = pBlock->Next;
+			else
+				CachePool->ColdListHead = pBlock->Next;
+		}
+		if (pBlock->Next != NULL)
+			pBlock->Next->Prior = pBlock->Prior;
+		else /* is the tail */
+		{
+			if (pBlock->Protected == TRUE)
+				CachePool->HotListTail = pBlock->Prior;
+			else
+				CachePool->ColdListTail = pBlock->Prior;
+		}
 		StoragePoolFree(&CachePool->Storage, pBlock->StorageIndex);
 		CachePool->bpt_root = Delete(CachePool->bpt_root, Index, TRUE);
-		CachePool->Used--;
+		CachePool->Used--;		
 		if (pBlock->Protected == TRUE)
-			;//Oops
+			CachePool->HotUsed--;
 		else
-			;//Oops
+			CachePool->ColdUsed--;
 	}
 }
 
+// Insert one to head
+static
+VOID __InsertToColdListHead(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
+{
+	ULONG i, Count;
+	PCACHE_BLOCK Start, Tail;
+	// Backfoward find first refcnt < 2
+	Count = 0;
+	Start = CachePool->ColdListTail;
+	while (Start->ReferenceCount >= 2 && Start != CachePool->ColdListHead)
+	{
+		Count++;
+		Start->ReferenceCount = 0;
+		Start = Start->Prior;
+	}
+#define APPEND_TO_HEAD(Head, Tail, OldHead)	\
+		{									\
+			Head->Prior = NULL;				\
+			Tail->Next = OldHead; 			\
+			OldHead->Prior = Tail;			\
+			OldHead = Head;					\
+		}
+	// Move to Hot List Head
+	if (Count > 0)
+		APPEND_TO_HEAD(Start->Next, CachePool->ColdListTail, CachePool->HotListHead);
+	// Reassign Cold List Tail
+	CachePool->ColdListTail = Start->Prior;
+	CachePool->ColdListTail->Next = NULL;
+	// Replace Start's data and Move to Cold List Head
+	Start->Index = Index;
+	Start->ReferenceCount = 1;
+	Start->Prior = NULL;
+	Start->Next = CachePool->ColdListHead;
+	StoragePoolWrite (
+		&CachePool->Storage,
+		Start->StorageIndex, 0,
+		Data,
+		BLOCK_SIZE
+	);
+	CachePool->ColdListHead->Prior = Start;
+	CachePool->ColdListHead = Start;
+	// If Hot List is full, move extras to Cold List
+	// The Cold List Will Never full for ...
+	CachePool->HotUsed += Count;
+	CachePool->ColdUsed -= Count;
+	Count = CachePool->HotUsed > CachePool->HotSize ?
+			CachePool->HotUsed - CachePool->HotSize : 0;
+	if (Count > 0)
+	{
+		Start = CachePool->HotListTail;
+		for (i = 0; i < Count; i++)
+			Start = Start->Prior;
+		APPEND_TO_HEAD(Start->Next, CachePool->HotListTail, CachePool->ColdListHead);
+	}
+	// Reassign Hot List Tail
+	CachePool->HotListTail = Start;
+	CachePool->HotListTail->Next = NULL;
+	CachePool->HotUsed += Count;
+	CachePool->ColdUsed -= Count;
+}
+
 /**
- * Find a Cache Block to Replace
+ * Find a Cache Block to Replace when Pool is Full
  */
 VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 {
-	// !!!!!!!!!!!!! We should never replace a block in OCP !!!!!!
+	__InsertToColdListHead(CachePool, Index, Data);
 }
 
 #endif

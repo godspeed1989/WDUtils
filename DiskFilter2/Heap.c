@@ -10,6 +10,8 @@
 #define _HFREE(p)			ExFreePoolWithTag (p, HEAP_POOL_TAG)
 #define _HZEROMEM(p,len)	RtlZeroMemory(p,(SIZE_T)(len))
 
+#if defined(USE_LFU) || defined(USE_LRU) || defined(USE_SLFU) || defined(USE_SLRU)
+
 BOOLEAN
 InitHeap(PHeap Heap, ULONG Size)
 {
@@ -219,3 +221,5 @@ GetAndRemoveHeapTop(PHeap Heap)
 	HeapDelete(Heap, 0);
 	return ret;
 }
+
+#endif

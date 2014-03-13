@@ -17,20 +17,20 @@
 
 typedef struct _CACHE_BLOCK
 {
-	BOOLEAN				Modified;
-	LONGLONG			Index;
-	ULONG				StorageIndex;
+	BOOLEAN					Modified;
+	LONGLONG				Index;
+	ULONG					StorageIndex;
 #if defined(USE_LFU) || defined(USE_LRU) || \
 	defined(USE_SLFU) || defined(USE_SLRU)
-	ULONG				HeapIndex;
+	ULONG					HeapIndex;
 #endif
 #if defined(USE_SLFU) || defined(USE_SLRU) || defined(USE_OCP)
-	ULONG				Protected;
+	ULONG					Protected;
 #endif
 #if defined(USE_OCP)
-	CACHE_BLOCK*		Prior;
-	CACHE_BLOCK*		Next;
-	ULONG				ReferenceCount;
+	struct _CACHE_BLOCK*	Prior;
+	struct _CACHE_BLOCK*	Next;
+	ULONG					ReferenceCount;
 #endif
 }CACHE_BLOCK, *PCACHE_BLOCK;
 
@@ -38,6 +38,8 @@ typedef struct _CACHE_BLOCK
 #  define HEAP_VAL_T LONG
 #elif  defined(USE_LRU) || defined(USE_SLRU)
 #  define HEAP_VAL_T LONGLONG
+#else
+#  define HEAP_VAL_T LONG
 #endif
 #define HEAP_DAT_T CACHE_BLOCK
 typedef struct _HeapEntry
@@ -79,8 +81,8 @@ typedef struct _CACHE_POOL
 	ULONG			HotUsed;
 	CACHE_BLOCK*	ColdListHead;
 	CACHE_BLOCK*	ColdListTail;
-	ULONG			HotSize;
-	ULONG			HotUsed;
+	ULONG			ColdSize;
+	ULONG			ColdUsed;
 	node*			bpt_root;
 #endif
 }CACHE_POOL, *PCACHE_POOL;
