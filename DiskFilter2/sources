@@ -13,6 +13,7 @@ SOURCES=DiskFilter.c			\
 		Cache_SLFU_SLRU.c		\
 		Cache_OCP.c				\
 		CacheCommon.c			\
+		List.c					\
 		Heap.c					\
 		Storage.c				\
 		md5.c

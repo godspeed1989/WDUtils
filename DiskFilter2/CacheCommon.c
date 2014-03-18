@@ -19,7 +19,7 @@ void Free_Record( record * r )
  */
 PCACHE_BLOCK __GetFreeBlock(PCACHE_POOL CachePool)
 {
-	PCACHE_BLOCK pBlock;
+	PCACHE_BLOCK pBlock = NULL;
 	if (_IsFull(CachePool) == FALSE)
 	{
 		pBlock = (PCACHE_BLOCK) ExAllocatePoolWithTag (

@@ -1,4 +1,5 @@
 #include "Cache.h"
+#include "List.h"
 
 #if defined(USE_OCP)
 
@@ -13,15 +14,13 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 
 	CachePool->Used = 0;
 	CachePool->Size = (CACHE_POOL_SIZE << 20)/(BLOCK_SIZE);
-	CachePool->HotUsed = 0;
+
+	InitList(&CachePool->HotList);
+	InitList(&CachePool->ColdList);
 	CachePool->HotSize = CachePool->Size / HOT_RATIO;
-	CachePool->HotListHead = NULL;
-	CachePool->HotListTail = NULL;
-	CachePool->ColdUsed = 0;
 	CachePool->ColdSize = CachePool->Size - CachePool->HotSize;
-	CachePool->ColdListHead = NULL;
-	CachePool->ColdListTail = NULL;
-	CachePool->bpt_root = NULL;
+	CachePool->hot_bpt_root = NULL;
+	CachePool->cold_bpt_root = NULL;
 
 	ret = InitStoragePool(&CachePool->Storage, CachePool->Size
 		#ifndef USE_DRAM
@@ -35,19 +34,21 @@ VOID DestroyCachePool(PCACHE_POOL CachePool)
 {
 	CachePool->Used = 0;
 	CachePool->Size = 0;
-	CachePool->HotUsed = 0;
 	CachePool->HotSize = 0;
-	CachePool->ColdUsed = 0;
 	CachePool->ColdSize = 0;
+	DestroyList(&CachePool->HotList);
+	DestroyList(&CachePool->ColdList);
 	// B+ Tree Destroy
-	Destroy_Tree(CachePool->bpt_root);
-	CachePool->bpt_root = NULL;
+	Destroy_Tree(CachePool->hot_bpt_root);
+	Destroy_Tree(CachePool->cold_bpt_root);
+	CachePool->hot_bpt_root = NULL;
+	CachePool->cold_bpt_root = NULL;
 	DestroyStoragePool(&CachePool->Storage);
 }
 
 BOOLEAN _IsFull(PCACHE_POOL CachePool)
 {
-	return (CachePool->ColdUsed == CachePool->ColdSize);
+	return (CachePool->ColdList.Size == CachePool->ColdSize);
 }
 
 /**
@@ -56,21 +57,14 @@ BOOLEAN _IsFull(PCACHE_POOL CachePool)
 BOOLEAN _QueryPoolByIndex(PCACHE_POOL CachePool, LONGLONG Index, PCACHE_BLOCK *ppBlock)
 {
 	// B+ Tree Find by Index
-	*ppBlock = Find_Record(CachePool->bpt_root, Index);
-	if (NULL == *ppBlock)
-		return FALSE;
-	else
+	*ppBlock = Find_Record(CachePool->hot_bpt_root, Index);
+	if (NULL != *ppBlock)
 		return TRUE;
+	*ppBlock = Find_Record(CachePool->cold_bpt_root, Index);
+	if (NULL != *ppBlock)
+		return TRUE;
+	return FALSE;
 }
-
-#define APPEND_TO_HEAD(Head, Tail, OldHead)	\
-		{									\
-			Head->Prior = NULL;				\
-			Tail->Next = OldHead; 			\
-			if (OldHead != NULL)			\
-				OldHead->Prior = Tail;		\
-			OldHead = Head;					\
-		}
 
 VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 {
@@ -78,25 +72,11 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 	// Move it to the head of list
 	if (pBlock->Protected == TRUE)
 	{
-		if (pBlock == CachePool->HotListHead)
-			return;
-		pBlock->Prior->Next = pBlock->Next;
-		if (pBlock == CachePool->HotListTail)
-			CachePool->HotListTail = pBlock->Prior;
-		else
-			pBlock->Next->Prior = pBlock->Prior;
-		APPEND_TO_HEAD(pBlock, pBlock, CachePool->HotListHead);
+		ListMoveToHead(&CachePool->HotList, pBlock);
 	}
 	else
 	{
-		if (pBlock == CachePool->ColdListHead)
-			return;
-		pBlock->Prior->Next = pBlock->Next;
-		if (pBlock == CachePool->ColdListTail)
-			CachePool->ColdListTail = pBlock->Prior;
-		else
-			pBlock->Next->Prior = pBlock->Prior;
-		APPEND_TO_HEAD(pBlock, pBlock, CachePool->ColdListHead);
+		ListMoveToHead(&CachePool->ColdList, pBlock);
 	}
 }
 
@@ -122,14 +102,10 @@ BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 			BLOCK_SIZE
 		);
 		CachePool->Used++;
-		CachePool->ColdUsed++;
 		// Insert to Cold List Head
-		if (CachePool->ColdListHead == NULL)
-			CachePool->ColdListHead = CachePool->ColdListTail = pBlock;
-		else
-			APPEND_TO_HEAD(pBlock, pBlock, CachePool->ColdListHead);
+		ListInsertToHead(&CachePool->ColdList, pBlock);
 		// Insert into bpt
-		CachePool->bpt_root = Insert(CachePool->bpt_root, Index, pBlock);
+		CachePool->cold_bpt_root = Insert(CachePool->cold_bpt_root, Index, pBlock);
 		return TRUE;
 	}
 	return FALSE;
@@ -143,48 +119,17 @@ VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 	PCACHE_BLOCK pBlock;
 	if (_QueryPoolByIndex(CachePool, Index, &pBlock) == TRUE)
 	{
+		StoragePoolFree(&CachePool->Storage, pBlock->StorageIndex);
 		if (pBlock->Protected == TRUE)
 		{
-			CachePool->HotUsed--;
-			if (pBlock == CachePool->HotListHead)
-			{
-				CachePool->HotListHead = pBlock->Next;
-				if (CachePool->HotListHead != NULL)
-					CachePool->HotListHead->Prior = NULL;
-			}
-			else
-				pBlock->Prior->Next = pBlock->Next;
-			if (pBlock == CachePool->HotListTail)
-			{
-				CachePool->HotListTail = pBlock->Prior;
-				if (CachePool->HotListTail != NULL)
-					CachePool->HotListTail->Next = NULL;
-			}
-			else
-				pBlock->Next->Prior = pBlock->Prior;
+			ListDelete(&CachePool->HotList, pBlock);
+			CachePool->hot_bpt_root = Delete(CachePool->hot_bpt_root, Index, TRUE);
 		}
 		else
 		{
-			CachePool->ColdUsed--;
-			if (pBlock == CachePool->ColdListHead)
-			{
-				CachePool->ColdListHead = pBlock->Next;
-				if (CachePool->ColdListHead != NULL)
-					CachePool->ColdListHead->Prior = NULL;
-			}
-			else
-				pBlock->Prior->Next = pBlock->Next;
-			if (pBlock == CachePool->ColdListTail)
-			{
-				CachePool->ColdListTail = pBlock->Prior;
-				if (CachePool->ColdListTail != NULL)
-					CachePool->ColdListTail->Next = NULL;
-			}
-			else
-				pBlock->Next->Prior = pBlock->Prior;
+			ListDelete(&CachePool->ColdList, pBlock);
+			CachePool->cold_bpt_root = Delete(CachePool->cold_bpt_root, Index, TRUE);
 		}
-		StoragePoolFree(&CachePool->Storage, pBlock->StorageIndex);
-		CachePool->bpt_root = Delete(CachePool->bpt_root, Index, TRUE);
 		CachePool->Used--;
 	}
 }
@@ -195,60 +140,50 @@ VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 {
 	ULONG i, Count;
-	PCACHE_BLOCK Start, Tail;
+	PCACHE_BLOCK pBlock;
 	// Backfoward find first refcnt < 2
-	Count = 0;
-	Start = CachePool->ColdListTail;
-	while (Start->ReferenceCount >= 2 && Start != CachePool->ColdListHead)
+	while ((pBlock = ListRemoveTail(&CachePool->ColdList)) && pBlock->ReferenceCount >= 2)
 	{
-		Count++;
-		Start->ReferenceCount = 0;
-		Start->Protected = TRUE;
-		Start = Start->Prior;
+		pBlock->Protected = TRUE;
+		pBlock->ReferenceCount = 0;
+		CachePool->cold_bpt_root = Delete(CachePool->cold_bpt_root, pBlock->Index, FALSE);
+		// Move to hot list head
+		ListInsertToHead(&CachePool->HotList, pBlock);
+		CachePool->hot_bpt_root = Insert(CachePool->hot_bpt_root, pBlock->Index, pBlock);
 	}
 
-	// Move to Hot List Head
-	if (Count > 0)
-		APPEND_TO_HEAD(Start->Next, CachePool->ColdListTail, CachePool->HotListHead);
-	// Replace Start's data and Move it to Cold List Head
-	Start->Index = Index;
-	Start->ReferenceCount = 1;
-	StoragePoolWrite (
-		&CachePool->Storage,
-		Start->StorageIndex, 0,
-		Data,
-		BLOCK_SIZE
-	);
-	if (Start != CachePool->ColdListHead)
+	if (pBlock != NULL)
 	{
-		CachePool->ColdListTail = Start->Prior;
-		APPEND_TO_HEAD(Start, Start, CachePool->ColdListHead);
+		// Replace data and Move it to Cold List Head
+		CachePool->cold_bpt_root = Delete(CachePool->cold_bpt_root, pBlock->Index, FALSE);
+		pBlock->Index = Index;
+		pBlock->ReferenceCount = 1;
+		StoragePoolWrite (
+			&CachePool->Storage,
+			pBlock->StorageIndex, 0,
+			Data,
+			BLOCK_SIZE
+		);
+		ListInsertToHead(&CachePool->ColdList, pBlock);
+		CachePool->cold_bpt_root = Insert(CachePool->cold_bpt_root, pBlock->Index, pBlock);
 	}
 	else
-		CachePool->ColdListTail = Start;
-	CachePool->ColdListTail->Next = NULL;
+	{
+		_AddNewBlockToPool(CachePool, Index, Data);
+	}
 
-	CachePool->HotUsed += Count;
-	CachePool->ColdUsed -= Count;
-
-	Count = CachePool->HotUsed > CachePool->HotSize ?
-			CachePool->HotUsed - CachePool->HotSize : 0;
+	Count = CachePool->HotList.Size > CachePool->HotSize ?
+			CachePool->HotList.Size - CachePool->HotSize : 0;
 	// If Hot List is full, move extras to Cold List
 	// The Cold List Will Never full for ...
-	if (Count > 0)
+	for (i = 0; i < Count; i++)
 	{
-		Start = CachePool->HotListTail;
-		for (i = 0; i < Count; i++)
-		{
-			Start->Protected = FALSE;
-			Start = Start->Prior;
-		}
-		APPEND_TO_HEAD(Start->Next, CachePool->HotListTail, CachePool->ColdListHead);
-		// Reassign Hot List Tail
-		CachePool->HotListTail = Start;
-		CachePool->HotListTail->Next = NULL;
-		CachePool->HotUsed -= Count;
-		CachePool->ColdUsed += Count;
+		pBlock = ListRemoveTail(&CachePool->HotList);
+		pBlock->Protected = FALSE;
+		CachePool->hot_bpt_root = Delete(CachePool->hot_bpt_root, pBlock->Index, FALSE);
+		// Move to hot list head
+		ListInsertToHead(&CachePool->ColdList, pBlock);
+		CachePool->cold_bpt_root = Insert(CachePool->cold_bpt_root, pBlock->Index, pBlock);
 	}
 }
 

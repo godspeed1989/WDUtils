@@ -55,6 +55,14 @@ typedef struct _Heap
 	PHeapEntry*	Entries;
 }Heap, *PHeap;
 
+#define LIST_DAT_T CACHE_BLOCK
+typedef struct _List
+{
+	ULONG			Size;
+	LIST_DAT_T*		Head;
+	LIST_DAT_T*		Tail;
+}List, *PList;
+
 typedef struct _CACHE_POOL
 {
 	ULONG			Size;
@@ -75,15 +83,12 @@ typedef struct _CACHE_POOL
 	node*			Protected_bpt_root;
 #endif
 #if defined(USE_OCP)
-	CACHE_BLOCK*	HotListHead;
-	CACHE_BLOCK*	HotListTail;
+	List			HotList;
 	ULONG			HotSize;
-	ULONG			HotUsed;
-	CACHE_BLOCK*	ColdListHead;
-	CACHE_BLOCK*	ColdListTail;
+	node*			hot_bpt_root;
+	List			ColdList;
 	ULONG			ColdSize;
-	ULONG			ColdUsed;
-	node*			bpt_root;
+	node*			cold_bpt_root;
 #endif
 }CACHE_POOL, *PCACHE_POOL;
 
