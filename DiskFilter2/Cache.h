@@ -7,9 +7,9 @@
 #define READ_VERIFY
 //#define USE_LRU
 //#define USE_LFU
-//#define USE_SLRU
+#define USE_SLRU
 //#define USE_SLFU
-#define USE_OCP
+//#define USE_OCP
 
 #define _READ_								TRUE
 #define _WRITE_								FALSE
@@ -74,11 +74,9 @@ typedef struct _CACHE_POOL
 #endif
 #if defined(USE_SLFU) || defined(USE_SLRU)
 	ULONG			ProbationarySize;
-	ULONG			ProbationaryUsed;
 	Heap			ProbationaryHeap;
 	node*			Probationary_bpt_root;
 	ULONG			ProtectedSize;
-	ULONG			ProtectedUsed;
 	Heap			ProtectedHeap;
 	node*			Protected_bpt_root;
 #endif
