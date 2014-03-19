@@ -51,18 +51,13 @@ l_error:
 
 VOID DestroyCachePool(PCACHE_POOL CachePool)
 {
-	CachePool->Used = 0;
-	CachePool->Size = 0;
-	CachePool->ProtectedSize = 0;
-	CachePool->ProbationarySize = 0;
 	// B+ Tree Destroy
-	Destroy_Tree(CachePool->Protected_bpt_root);
-	CachePool->Protected_bpt_root = NULL;
-	Destroy_Tree(CachePool->Probationary_bpt_root);
-	CachePool->Probationary_bpt_root = NULL;
-	DestroyStoragePool(&CachePool->Storage);
 	DestroyHeap(&CachePool->ProbationaryHeap);
 	DestroyHeap(&CachePool->ProtectedHeap);
+	Destroy_Tree(CachePool->Protected_bpt_root);
+	Destroy_Tree(CachePool->Probationary_bpt_root);
+	DestroyStoragePool(&CachePool->Storage);
+	ZeroMemory(CachePool, sizeof(CACHE_POOL));
 }
 
 BOOLEAN _IsFull(PCACHE_POOL CachePool)
