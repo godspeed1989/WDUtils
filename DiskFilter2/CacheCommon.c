@@ -105,9 +105,9 @@ VOID UpdataCachePool(
 			_DeleteOneBlockFromPool(CachePool, Offset-1);
 		for (i = 0; i < Length; i++)
 		{
-		#if 0
-			_DeleteOneBlockFromPool(CachePool, Offset+i);
-		#else
+		//#if 0
+			//_DeleteOneBlockFromPool(CachePool, Offset+i);
+		//#else
 			if(_QueryPoolByIndex(CachePool, Offset+i, &pBlock) == TRUE)
 			{
 				// Update
@@ -131,7 +131,7 @@ VOID UpdataCachePool(
 				_FindBlockToReplace(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
 				continue;
 			}
-		#endif
+		//#endif
 		}
 		if (end_broken == TRUE)
 			_DeleteOneBlockFromPool(CachePool, Offset+Length);

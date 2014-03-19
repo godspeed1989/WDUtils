@@ -8,7 +8,7 @@
 #define QueryTickCount(tc) KeQueryTickCount(tc)
 #endif
 
-#define PROTECT_RATIO    4
+#define PROTECT_RATIO    2
 BOOLEAN InitCachePool(PCACHE_POOL CachePool
 					#ifndef USE_DRAM
 						,ULONG DiskNum ,ULONG PartitionNum
@@ -30,7 +30,10 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 		#endif
 		);
 	if (ret == FALSE)
+	{
+		ZeroMemory(CachePool, sizeof(CACHE_POOL));
 		return ret;
+	}
 	ret = InitHeap(&CachePool->ProbationaryHeap, CachePool->ProbationarySize);
 	if (ret == FALSE)
 		goto l_error;
@@ -42,6 +45,7 @@ l_error:
 	DestroyHeap(&CachePool->ProbationaryHeap);
 	DestroyHeap(&CachePool->ProtectedHeap);
 	DestroyStoragePool(&CachePool->Storage);
+	ZeroMemory(CachePool, sizeof(CACHE_POOL));
 	return ret;
 }
 

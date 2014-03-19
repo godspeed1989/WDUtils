@@ -34,7 +34,7 @@ InitStoragePool(PSTORAGE_POOL StoragePool, ULONG Size
 	RtlClearAllBits(&StoragePool->Bitmap);
 
 #ifdef USE_DRAM
-	StoragePool->Buffer = (PUCHAR)ExAllocatePoolWithTag(NonPagedPool,
+	StoragePool->Buffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool,
 							(SIZE_T)(BLOCK_SIZE*Size), STORAGE_POOL_TAG);
 	if (StoragePool->Buffer == NULL)
 		goto l_error;
@@ -59,8 +59,13 @@ InitStoragePool(PSTORAGE_POOL StoragePool, ULONG Size
 #endif
 	return TRUE;
 l_error:
-	ExFreePoolWithTag(StoragePool->Bitmap_Buffer, STORAGE_POOL_TAG);
-	StoragePool->Bitmap_Buffer = NULL;
+	if (StoragePool->Bitmap_Buffer)
+		ExFreePoolWithTag(StoragePool->Bitmap_Buffer, STORAGE_POOL_TAG);
+#ifdef USE_DRAM
+	if (StoragePool->Buffer)
+		ExFreePoolWithTag(StoragePool->Buffer, STORAGE_POOL_TAG);
+#endif
+	RtlZeroMemory(StoragePool, sizeof(STORAGE_POOL));
 	return FALSE;
 }
 

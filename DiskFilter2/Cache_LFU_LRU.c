@@ -24,11 +24,17 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 		#endif
 		);
 	if (ret == FALSE)
-		return ret;
+		goto l_error;
 	ret = InitHeap(&CachePool->Heap, CachePool->Size);
 	if (ret == FALSE)
+	{
 		DestroyStoragePool(&CachePool->Storage);
-	return ret;
+		goto l_error;
+	}
+	return TRUE;
+l_error:
+	ZeroMemory(CachePool, sizeof(CACHE_POOL));
+	return FALSE;
 }
 
 VOID DestroyCachePool(PCACHE_POOL CachePool)

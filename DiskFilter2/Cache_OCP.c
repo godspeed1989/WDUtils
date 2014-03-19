@@ -3,7 +3,7 @@
 
 #if defined(USE_OCP)
 
-#define HOT_RATIO    4
+#define HOT_RATIO    2
 BOOLEAN InitCachePool(PCACHE_POOL CachePool
 					#ifndef USE_DRAM
 						,ULONG DiskNum ,ULONG PartitionNum
@@ -27,6 +27,8 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 			, DiskNum, PartitionNum
 		#endif
 		);
+	if (ret == FALSE)
+		ZeroMemory(CachePool, sizeof(CACHE_POOL));
 	return ret;
 }
 

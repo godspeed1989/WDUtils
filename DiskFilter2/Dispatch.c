@@ -140,6 +140,7 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 					DBG_PRINT(DBG_TRACE_OPS, ("Use disk(%u) partition(%u) as Cache\n",
 						((ULONG32*)InputBuffer)[2], ((ULONG32*)InputBuffer)[3]));
 				#endif
+					Status = STATUS_SUCCESS;
 					if (Type == FALSE)
 					{
 						DevExt->CacheHit = 0;
@@ -157,10 +158,13 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 							) == TRUE)
 							DevExt->bIsProtected = TRUE;
 						else
-							KdPrint(("%s:%d-%d: Init Cache Pool Error\n", __FUNCTION__,
+						{
+							DevExt->bIsProtected = FALSE;
+							KdPrint(("%s: %d-%d: Init Cache Pool Error\n", __FUNCTION__,
 										DevExt->DiskNumber, DevExt->PartitionNumber));
+							Status = STATUS_UNSUCCESSFUL;
+						}
 					}
-					Status = STATUS_SUCCESS;
 					break;
 				}
 				DeviceObject = DeviceObject->NextDevice;
