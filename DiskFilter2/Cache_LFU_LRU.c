@@ -78,7 +78,7 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 /**
  * Add one Block to Cache Pool, When Pool is not Full
  */
-BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
+BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
 {
 	PCACHE_BLOCK pBlock;
 #if defined(USE_LRU)
@@ -91,7 +91,7 @@ BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 		TRUE == HeapInsert(&CachePool->Heap, pBlock, 0))
 #endif
 	{
-		pBlock->Modified = FALSE;
+		pBlock->Modified = Modified;
 		pBlock->Index = Index;
 		StoragePoolWrite (
 			&CachePool->Storage,
@@ -130,7 +130,7 @@ VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 /**
  * Find a Cache Block to Replace when Pool is Full
  */
-VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
+VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
 {
 	PCACHE_BLOCK pBlock;
 #if defined(USE_LRU)
@@ -140,7 +140,7 @@ VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 	if (NULL == pBlock)
 		return;
 	CachePool->bpt_root = Delete(CachePool->bpt_root, pBlock->Index, FALSE);
-	pBlock->Modified = FALSE;
+	pBlock->Modified = Modified;
 	pBlock->Index = Index;
 	StoragePoolWrite (
 		&CachePool->Storage,

@@ -7,8 +7,8 @@
 #define READ_VERIFY
 //#define USE_LRU
 //#define USE_LFU
-#define USE_SLRU
-//#define USE_SLFU
+//#define USE_SLRU
+#define USE_SLFU
 //#define USE_OCP
 
 #define _READ_								TRUE
@@ -44,8 +44,8 @@ typedef struct _CACHE_BLOCK
 #define HEAP_DAT_T CACHE_BLOCK
 typedef struct _HeapEntry
 {
-	HEAP_VAL_T Value;
-	HEAP_DAT_T* pData;
+	HEAP_VAL_T	Value;
+	HEAP_DAT_T*	pData;
 }HeapEntry, *PHeapEntry;
 
 typedef struct _Heap
@@ -135,10 +135,10 @@ VOID
  * Internal Functions Used by Common Function
  */
 PCACHE_BLOCK	__GetFreeBlock(PCACHE_POOL CachePool);
-BOOLEAN			_AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data);
+BOOLEAN			_AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified);
 VOID			_DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index);
 BOOLEAN			_QueryPoolByIndex(PCACHE_POOL CachePool, LONGLONG Index, PCACHE_BLOCK *ppBlock);
-VOID			_FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data);
+VOID			_FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified);
 VOID			_IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock);
 BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 

@@ -71,7 +71,7 @@ VOID UpdataCachePool(
 			{
 				// Not to duplicate
 				if(_QueryPoolByIndex(CachePool, Offset+i, &pBlock) == FALSE)
-					_AddNewBlockToPool(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
+					_AddNewBlockToPool(CachePool, Offset+i, Buf+i*BLOCK_SIZE, FALSE);
 				else
 				{
 				#ifdef READ_VERIFY
@@ -88,7 +88,7 @@ VOID UpdataCachePool(
 		{
 			// Not to duplicate
 			if(_QueryPoolByIndex(CachePool, Offset+i, &pBlock) == FALSE)
-				_FindBlockToReplace(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
+				_FindBlockToReplace(CachePool, Offset+i, Buf+i*BLOCK_SIZE, FALSE);
 			else
 			{
 			#ifdef READ_VERIFY
@@ -123,12 +123,12 @@ VOID UpdataCachePool(
 			}
 			if (_IsFull(CachePool) == FALSE)
 			{
-				_AddNewBlockToPool(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
+				_AddNewBlockToPool(CachePool, Offset+i, Buf+i*BLOCK_SIZE, TRUE);
 				continue;
 			}
 			else
 			{
-				_FindBlockToReplace(CachePool, Offset+i, Buf+i*BLOCK_SIZE);
+				_FindBlockToReplace(CachePool, Offset+i, Buf+i*BLOCK_SIZE, TRUE);
 				continue;
 			}
 		//#endif

@@ -81,12 +81,12 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
  * Add one Block to Cache Pool, When Pool is not Full
  * (Add to Cold List Head)
  */
-BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
+BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
 {
 	PCACHE_BLOCK pBlock;
 	if ((pBlock = __GetFreeBlock(CachePool)) != NULL)
 	{
-		pBlock->Modified = FALSE;
+		pBlock->Modified = Modified;
 		pBlock->Index = Index;
 		pBlock->Protected = FALSE;
 		pBlock->Prior = NULL;
@@ -134,7 +134,7 @@ VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 /**
  * Find a Cache Block to Replace, When Pool is Full
  */
-VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
+VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
 {
 	ULONG i, Count;
 	PCACHE_BLOCK pBlock;
@@ -155,6 +155,7 @@ VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 		CachePool->cold_bpt_root = Delete(CachePool->cold_bpt_root, pBlock->Index, FALSE);
 		pBlock->Index = Index;
 		pBlock->ReferenceCount = 1;
+		pBlock->Modified = Modified;
 		StoragePoolWrite (
 			&CachePool->Storage,
 			pBlock->StorageIndex, 0,
@@ -166,7 +167,7 @@ VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 	}
 	else
 	{
-		_AddNewBlockToPool(CachePool, Index, Data);
+		_AddNewBlockToPool(CachePool, Index, Data, Modified);
 	}
 
 	Count = CachePool->HotList.Size > CachePool->HotSize ?

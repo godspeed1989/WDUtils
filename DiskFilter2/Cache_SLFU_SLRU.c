@@ -128,7 +128,7 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
  * Add one Block to Cache Pool, When Pool is not Full
  * (Add to Probationary Segment)
  */
-BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
+BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
 {
 	PCACHE_BLOCK pBlock;
 #if defined(USE_SLRU)
@@ -141,7 +141,7 @@ BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 		TRUE == HeapInsert(&CachePool->ProbationaryHeap, pBlock, 0))
 #endif
 	{
-		pBlock->Modified = FALSE;
+		pBlock->Modified = Modified;
 		pBlock->Index = Index;
 		pBlock->Protected = FALSE;
 		StoragePoolWrite (
@@ -190,7 +190,7 @@ VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
  * Find a Cache Block to Replace when Pool is Full
  * (Find From Probationary Segment)
  */
-VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
+VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
 {
 	PCACHE_BLOCK pBlock;
 #if defined(USE_SLRU)
@@ -200,7 +200,7 @@ VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data)
 	if (NULL == pBlock)
 		return;
 	CachePool->Probationary_bpt_root = Delete(CachePool->Probationary_bpt_root, pBlock->Index, FALSE);
-	pBlock->Modified = FALSE;
+	pBlock->Modified = Modified;
 	pBlock->Index = Index;
 	pBlock->Protected = FALSE;
 	StoragePoolWrite (
