@@ -2,16 +2,6 @@
 #include "common.h"
 #include "DiskFilterIoctl.h"
 
-#define SECTOR_SIZE						512
-#define NSB								1		/* Number Sectors per Block */
-#define BLOCK_SIZE						(SECTOR_SIZE*NSB)
-
-#ifndef USE_DRAM
-#define BLOCK_RESERVE					(16<<20)
-#else
-#define BLOCK_RESERVE					(0)
-#endif
-
 typedef struct _STORAGE_POOL
 {
 	ULONG			Size;

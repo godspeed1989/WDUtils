@@ -1,5 +1,6 @@
 #include "Cache.h"
 #include "Heap.h"
+#include "Queue.h"
 
 #if defined(USE_SLFU) || defined(USE_SLRU)
 
@@ -17,12 +18,10 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 {
 	BOOLEAN ret;
 
-	CachePool->Used = 0;
+	ZeroMemory(CachePool, sizeof(CACHE_POOL));
 	CachePool->Size = (CACHE_POOL_SIZE << 20)/(BLOCK_SIZE);
 	CachePool->ProtectedSize = CachePool->Size / PROTECT_RATIO;
-	CachePool->Protected_bpt_root = NULL;
 	CachePool->ProbationarySize = CachePool->Size - CachePool->ProtectedSize;
-	CachePool->Probationary_bpt_root = NULL;
 
 	ret = InitStoragePool(&CachePool->Storage, CachePool->Size
 		#ifndef USE_DRAM
@@ -30,23 +29,28 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 		#endif
 		);
 	if (ret == FALSE)
-	{
-		ZeroMemory(CachePool, sizeof(CACHE_POOL));
-		return ret;
-	}
+		goto l_error;
 	ret = InitHeap(&CachePool->ProbationaryHeap, CachePool->ProbationarySize);
 	if (ret == FALSE)
 		goto l_error;
 	ret = InitHeap(&CachePool->ProtectedHeap, CachePool->ProtectedSize);
 	if (ret == FALSE)
 		goto l_error;
-	return ret;
+#ifdef WRITE_BACK_ENABLE
+	ret = InitQueue(&CachePool->WbQueue, (WB_QUEUE_SIZE << 20)/(BLOCK_SIZE));
+	if (ret == FALSE)
+		goto l_error;
+#endif
+	return TRUE;
 l_error:
-	DestroyHeap(&CachePool->ProbationaryHeap);
+#ifdef WRITE_BACK_ENABLE
+	DestroyQueue(&CachePool->WbQueue);
+#endif
 	DestroyHeap(&CachePool->ProtectedHeap);
+	DestroyHeap(&CachePool->ProbationaryHeap);
 	DestroyStoragePool(&CachePool->Storage);
 	ZeroMemory(CachePool, sizeof(CACHE_POOL));
-	return ret;
+	return FALSE;
 }
 
 VOID DestroyCachePool(PCACHE_POOL CachePool)

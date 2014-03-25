@@ -1,6 +1,7 @@
 #include "DiskFilter.h"
 #include "Utils.h"
 #include "DiskFilterIoctl.h"
+#include "Queue.h"
 
 NTSTATUS DF_CreateRWThread(PDF_DEVICE_EXTENSION DevExt);
 
@@ -131,6 +132,7 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 			{
 				DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 				if (DeviceObject != g_pDeviceObject &&
+					DevExt->bIsStart == TRUE &&
 					DevExt->DiskNumber == ((ULONG32*)InputBuffer)[0] &&
 					DevExt->PartitionNumber == ((ULONG32*)InputBuffer)[1])
 				{
@@ -159,6 +161,7 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 							DevExt->bIsProtected = TRUE;
 						else
 						{
+							DestroyCachePool(&DevExt->CachePool);
 							DevExt->bIsProtected = FALSE;
 							KdPrint(("%s: %d-%d: Init Cache Pool Error\n", __FUNCTION__,
 										DevExt->DiskNumber, DevExt->PartitionNumber));
@@ -182,6 +185,7 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 			{
 				DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 				if (DeviceObject != g_pDeviceObject &&
+					DevExt->bIsStart == TRUE &&
 					DevExt->DiskNumber == ((ULONG32*)InputBuffer)[0] &&
 					DevExt->PartitionNumber == ((ULONG32*)InputBuffer)[1])
 				{
@@ -368,7 +372,7 @@ DF_DispatchReadWrite(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		IoMarkIrpPending(Irp);
 		// Queue this IRP
 		ExInterlockedInsertTailList(&DevExt->RwList,
-			&Irp->Tail.Overlay.ListEntry, &DevExt->RwSpinLock);
+			&Irp->Tail.Overlay.ListEntry, &DevExt->RwListSpinLock);
 		// Set Event
 		KeSetEvent(&DevExt->RwThreadEvent, IO_NO_INCREMENT, FALSE);
 

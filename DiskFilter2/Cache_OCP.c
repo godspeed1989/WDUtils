@@ -1,5 +1,6 @@
 #include "Cache.h"
 #include "List.h"
+#include "Queue.h"
 
 #if defined(USE_OCP)
 
@@ -12,15 +13,12 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 {
 	BOOLEAN ret;
 
-	CachePool->Used = 0;
+	ZeroMemory(CachePool, sizeof(CACHE_POOL));
 	CachePool->Size = (CACHE_POOL_SIZE << 20)/(BLOCK_SIZE);
-
 	InitList(&CachePool->HotList);
 	InitList(&CachePool->ColdList);
 	CachePool->HotSize = CachePool->Size / HOT_RATIO;
 	CachePool->ColdSize = CachePool->Size - CachePool->HotSize;
-	CachePool->hot_bpt_root = NULL;
-	CachePool->cold_bpt_root = NULL;
 
 	ret = InitStoragePool(&CachePool->Storage, CachePool->Size
 		#ifndef USE_DRAM
@@ -28,8 +26,20 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 		#endif
 		);
 	if (ret == FALSE)
-		ZeroMemory(CachePool, sizeof(CACHE_POOL));
-	return ret;
+		goto l_error;
+#ifdef WRITE_BACK_ENABLE
+	ret = InitQueue(&CachePool->WbQueue, (WB_QUEUE_SIZE << 20)/(BLOCK_SIZE));
+	if (ret == FALSE)
+		goto l_error;
+#endif
+	return TRUE;
+l_error:
+#ifdef WRITE_BACK_ENABLE
+	DestroyQueue(&CachePool->WbQueue);
+#endif
+	DestroyStoragePool(&CachePool->Storage);
+	ZeroMemory(CachePool, sizeof(CACHE_POOL));
+	return FALSE;
 }
 
 VOID DestroyCachePool(PCACHE_POOL CachePool)

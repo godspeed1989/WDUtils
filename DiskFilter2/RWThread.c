@@ -1,42 +1,5 @@
 #include "DiskFilter.h"
-
-IO_COMPLETION_ROUTINE __CompletionRoutine;
-static NTSTATUS
-__CompletionRoutine(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
-{
-	if (Irp->PendingReturned == TRUE)
-	{
-		KeSetEvent ((PKEVENT) Context, IO_NO_INCREMENT, FALSE);
-	}
-	return STATUS_MORE_PROCESSING_REQUIRED;
-}
-
-static NTSTATUS
-ForwardIrpSynchronously(PDEVICE_OBJECT DeviceObject, PIRP Irp)
-{
-	KEVENT		event;
-	NTSTATUS	status;
-
-	IoCopyCurrentIrpStackLocationToNext(Irp);
-	KeInitializeEvent(&event, NotificationEvent, FALSE);
-	IoSetCompletionRoutine (Irp,
-							__CompletionRoutine,
-							&event,
-							TRUE, TRUE, TRUE);
-	status = IoCallDriver(DeviceObject, Irp);
-
-	if (status == STATUS_PENDING)
-	{
-		KeWaitForSingleObject (&event,
-								Executive,// WaitReason
-								KernelMode,// must be Kernelmode to prevent the stack getting paged out
-								FALSE,
-								NULL// indefinite wait
-								);
-		status = Irp->IoStatus.Status;
-	}
-	return status;
-}
+#include "Utils.h"
 
 VOID DF_ReadWriteThread(PVOID Context)
 {
@@ -56,7 +19,7 @@ VOID DF_ReadWriteThread(PVOID Context)
 	{
 		KeWaitForSingleObject(&DevExt->RwThreadEvent,
 			Executive, KernelMode, FALSE, NULL);
-		if (DevExt->bTerminalThread)
+		if (DevExt->bTerminalRwThread)
 		{
 			PsTerminateSystemThread(STATUS_SUCCESS);
 			KdPrint(("Read Write Thread Exit...\n"));
@@ -64,7 +27,7 @@ VOID DF_ReadWriteThread(PVOID Context)
 		}
 
 		while (NULL != (ReqEntry = ExInterlockedRemoveHeadList(
-						&DevExt->RwList, &DevExt->RwSpinLock)))
+						&DevExt->RwList, &DevExt->RwListSpinLock)))
 		{
 			Irp = CONTAINING_RECORD(ReqEntry, IRP, Tail.Overlay.ListEntry);
 			IrpSp = IoGetCurrentIrpStackLocation(Irp);

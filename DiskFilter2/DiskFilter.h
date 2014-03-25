@@ -12,6 +12,7 @@ DRIVER_DISPATCH				DF_DispatchPower;
 DRIVER_DISPATCH				DF_DispatchIoctl;
 DRIVER_DISPATCH				DF_CtlDevDispatch;
 KSTART_ROUTINE				DF_ReadWriteThread;
+KSTART_ROUTINE				DF_WriteBackThread;
 
 NTSTATUS
 	DF_QueryConfig (
@@ -22,6 +23,9 @@ NTSTATUS
 
 VOID
 	DF_ReadWriteThread (PVOID Context);
+
+VOID
+	DF_WriteBackThread (PVOID Context);
 
 #pragma alloc_text("INIT",  DriverEntry)
 #pragma alloc_text("PAGED", DF_AddDevice)

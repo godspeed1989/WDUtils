@@ -193,11 +193,6 @@ DF_AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject)
 	DevExt->PhysicalDeviceObject = PhysicalDeviceObject;
 
 	KeInitializeEvent(&DevExt->PagingCountEvent, NotificationEvent, TRUE);
-	DevExt->RwThreadObject = NULL;
-	DevExt->bTerminalThread = FALSE;
-	InitializeListHead(&DevExt->RwList);
-	KeInitializeSpinLock(&DevExt->RwSpinLock);
-	KeInitializeEvent(&DevExt->RwThreadEvent, SynchronizationEvent, FALSE);
 
 	// Attach to Lower Device
 	LowerDeviceObject = IoAttachDeviceToDeviceStack(DeviceObject, PhysicalDeviceObject);

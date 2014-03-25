@@ -1,8 +1,10 @@
 #pragma once
 #include <Ntifs.h>
 
-IO_COMPLETION_ROUTINE DF_QueryVolumeCompletion;
-
+NTSTATUS ForwardIrpSynchronously (
+		PDEVICE_OBJECT	DeviceObject,
+		PIRP			Irp
+	);
 NTSTATUS IoDoRWRequestSync (
 		ULONG			MajorFunction,
 		PDEVICE_OBJECT  DeviceObject,

@@ -11,8 +11,8 @@
 #define DF_DRIVER_EXTENSION_ID_UNICODE_BUFFER	1
 
 // obsolete
-#define MAX_PROTECTED_VOLUME					16  
-#define MAX_CACHE_VOLUME						16  
+#define MAX_PROTECTED_VOLUME					16
+#define MAX_CACHE_VOLUME						16
 
 typedef struct _DF_DRIVER_EXTENSION
 {
@@ -27,6 +27,7 @@ typedef struct _DF_DEVICE_EXTENSION
 	PDEVICE_OBJECT	PhysicalDeviceObject;
 	PDEVICE_OBJECT	LowerDeviceObject;
 	BOOLEAN			bIsProtected;
+	BOOLEAN			bIsStart;
 	// Device Info
 	LARGE_INTEGER	TotalSize;
 	ULONG			SectorSize;
@@ -40,9 +41,14 @@ typedef struct _DF_DEVICE_EXTENSION
 	// RW Thread
 	LIST_ENTRY		RwList;
 	PVOID			RwThreadObject;
-	BOOLEAN			bTerminalThread;
+	BOOLEAN			bTerminalRwThread;
 	KEVENT			RwThreadEvent;
-	KSPIN_LOCK		RwSpinLock;
+	KSPIN_LOCK		RwListSpinLock;
+	// WB Thread
+	PVOID			WbThreadObject;
+	BOOLEAN			bTerminalWbThread;
+	KEVENT			WbThreadEvent;
+	KSPIN_LOCK		WbQueueSpinLock;
 	// Cache Pool
 	CACHE_POOL		CachePool;
 	// For Pnp

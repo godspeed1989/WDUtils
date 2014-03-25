@@ -3,8 +3,45 @@
 #include "md5.h"
 #include <ntstrsafe.h>
 
-IO_COMPLETION_ROUTINE QueryCompletion;
-NTSTATUS QueryCompletion (PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
+IO_COMPLETION_ROUTINE ForwardIrpCompletion;
+static NTSTATUS
+ForwardIrpCompletion (PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
+{
+	if (Irp->PendingReturned == TRUE)
+	{
+		KeSetEvent ((PKEVENT) Context, IO_NO_INCREMENT, FALSE);
+	}
+	return STATUS_MORE_PROCESSING_REQUIRED;
+}
+
+NTSTATUS ForwardIrpSynchronously (PDEVICE_OBJECT DeviceObject, PIRP Irp)
+{
+	KEVENT		event;
+	NTSTATUS	status;
+
+	IoCopyCurrentIrpStackLocationToNext(Irp);
+	KeInitializeEvent(&event, NotificationEvent, FALSE);
+	IoSetCompletionRoutine (Irp,
+							ForwardIrpCompletion,
+							&event,
+							TRUE, TRUE, TRUE);
+	status = IoCallDriver(DeviceObject, Irp);
+
+	if (status == STATUS_PENDING)
+	{
+		KeWaitForSingleObject (&event,
+								Executive,// WaitReason
+								KernelMode,// must be Kernelmode to prevent the stack getting paged out
+								FALSE,
+								NULL// indefinite wait
+								);
+		status = Irp->IoStatus.Status;
+	}
+	return status;
+}
+
+IO_COMPLETION_ROUTINE RWRequestCompletion;
+NTSTATUS RWRequestCompletion (PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
 {
 	PMDL mdl, nextMdl;
 	UNREFERENCED_PARAMETER(DeviceObject);
@@ -54,7 +91,7 @@ NTSTATUS IoDoRWRequestAsync (
 		KdPrint(("%s: Build IRP failed!\n", __FUNCTION__));
 		return STATUS_UNSUCCESSFUL;
 	}
-	IoSetCompletionRoutine(Irp, QueryCompletion, &Event, TRUE, TRUE, TRUE);
+	IoSetCompletionRoutine(Irp, RWRequestCompletion, &Event, TRUE, TRUE, TRUE);
 
 	IoCallDriver(DeviceObject, Irp);
 	return STATUS_SUCCESS;
@@ -143,7 +180,12 @@ NTSTATUS IoDoIoctl (
 }
 
 static NTSTATUS
-DF_CreateRWThread(PDF_DEVICE_EXTENSION DevExt)
+DF_CreateSystemThread (
+		PKSTART_ROUTINE			StartRoutine,
+		PDF_DEVICE_EXTENSION	DevExt,
+		PVOID					*ThreadObject,
+		PBOOLEAN				TerminalThread
+	)
 {
 	NTSTATUS			Status;
 	HANDLE				hThread;
@@ -152,7 +194,7 @@ DF_CreateRWThread(PDF_DEVICE_EXTENSION DevExt)
 	Status = PsCreateSystemThread (
 		&hThread,
 		(ULONG)0, NULL, NULL, NULL,
-		DF_ReadWriteThread,
+		StartRoutine,
 		(PVOID)DevExt
 	);
 
@@ -164,7 +206,7 @@ DF_CreateRWThread(PDF_DEVICE_EXTENSION DevExt)
 			THREAD_ALL_ACCESS,
 			NULL,
 			KernelMode,
-			&DevExt->RwThreadObject,
+			ThreadObject,
 			NULL
 		);
 		if (NT_SUCCESS(Status))
@@ -175,8 +217,9 @@ DF_CreateRWThread(PDF_DEVICE_EXTENSION DevExt)
 	}
 	// Terminate thread
 	KdPrint(("%s Failed\n", __FUNCTION__));
-	DevExt->bTerminalThread = TRUE;
-	KeSetEvent(&DevExt->RwThreadEvent, (KPRIORITY)0, FALSE);
+	*ThreadObject = NULL;
+	*TerminalThread = TRUE;
+	KeSetEvent(&DevExt->RwThreadEvent, IO_NO_INCREMENT, FALSE);
 	ZwClose(hThread);
 	return STATUS_UNSUCCESSFUL;
 }
@@ -185,17 +228,36 @@ VOID StartDevice(PDEVICE_OBJECT DeviceObject)
 {
 	PDF_DEVICE_EXTENSION	DevExt;
 	DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
-	if (DeviceObject != g_pDeviceObject)
-	{
-		DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
-		DF_QueryDeviceInfo(DeviceObject);
-		if (NT_SUCCESS(DF_CreateRWThread(DevExt)))
-		{
-			KdPrint(("%s: %p Start\n", __FUNCTION__, DeviceObject));
-		}
-		KdPrint(("\n"));
-	}
-	DeviceObject = DeviceObject->NextDevice;
+
+	DevExt->bIsStart = FALSE;
+
+	if (!NT_SUCCESS(DF_QueryDeviceInfo(DeviceObject)))
+		return;
+
+	DevExt->RwThreadObject = NULL;
+	DevExt->bTerminalRwThread = FALSE;
+	InitializeListHead(&DevExt->RwList);
+	KeInitializeSpinLock(&DevExt->RwListSpinLock);
+	KeInitializeEvent(&DevExt->RwThreadEvent, SynchronizationEvent, FALSE);
+	if (NT_SUCCESS( DF_CreateSystemThread(DF_ReadWriteThread, DevExt,
+					&DevExt->RwThreadObject, &DevExt->bTerminalRwThread) ))
+		KdPrint(("%s: %p RW Thread Start\n", __FUNCTION__, DeviceObject));
+	else
+		return;
+
+	DevExt->WbThreadObject = NULL;
+	DevExt->bTerminalWbThread = FALSE;
+	DevExt->CachePool.WbQueue.Used = 0;
+	KeInitializeSpinLock(&DevExt->WbQueueSpinLock);
+	KeInitializeEvent(&DevExt->WbThreadEvent, SynchronizationEvent, FALSE);
+	if (NT_SUCCESS( DF_CreateSystemThread(DF_WriteBackThread, DevExt,
+					&DevExt->WbThreadObject, &DevExt->bTerminalWbThread) ))
+		KdPrint(("%s: %p WB Thread Start\n", __FUNCTION__, DeviceObject));
+	else
+		return;
+	KdPrint(("\n"));
+
+	DevExt->bIsStart = TRUE;
 }
 
 VOID StopDevice(PDEVICE_OBJECT DeviceObject)
@@ -204,17 +266,23 @@ VOID StopDevice(PDEVICE_OBJECT DeviceObject)
 	DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
 	DevExt->bIsProtected = FALSE;
-	//TODO: Flush back cache ...
 	if (DevExt->LowerDeviceObject)
 	{
 		IoDetachDevice(DevExt->LowerDeviceObject);
 	}
 	if (DevExt->RwThreadObject)
 	{
-		DevExt->bTerminalThread = TRUE;
-		KeSetEvent(&DevExt->RwThreadEvent, (KPRIORITY)0, FALSE);
+		DevExt->bTerminalRwThread = TRUE;
+		KeSetEvent(&DevExt->RwThreadEvent, IO_NO_INCREMENT, FALSE);
 		KeWaitForSingleObject(DevExt->RwThreadObject, Executive, KernelMode, FALSE, NULL);
 		ObDereferenceObject(DevExt->RwThreadObject);
+	}
+	if (DevExt->WbThreadObject)
+	{
+		DevExt->bTerminalWbThread = TRUE;
+		KeSetEvent(&DevExt->WbThreadEvent, IO_NO_INCREMENT, FALSE);
+		KeWaitForSingleObject(DevExt->WbThreadObject, Executive, KernelMode, FALSE, NULL);
+		ObDereferenceObject(DevExt->WbThreadObject);
 	}
 	DestroyCachePool(&DevExt->CachePool);
 	IoDeleteDevice(DeviceObject);
@@ -246,7 +314,7 @@ NTSTATUS DF_QueryDeviceInfo(PDEVICE_OBJECT DeviceObject)
 	// Get Partition Length
 	Status = IoDoIoctl (
 		IOCTL_DISK_GET_PARTITION_INFO,
-		DevExt->PhysicalDeviceObject,
+		DevExt->LowerDeviceObject,
 		NULL,
 		0,
 		&PartitionInfo,
@@ -263,7 +331,7 @@ NTSTATUS DF_QueryDeviceInfo(PDEVICE_OBJECT DeviceObject)
 	// Get Disk Number
 	Status = IoDoIoctl (
 		IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS,
-		DevExt->PhysicalDeviceObject,
+		DevExt->LowerDeviceObject,
 		NULL,
 		0,
 		&VolumeDiskExt,
@@ -279,7 +347,7 @@ NTSTATUS DF_QueryDeviceInfo(PDEVICE_OBJECT DeviceObject)
 	// Read DBR
 	Status = IoDoRWRequestSync (
 		IRP_MJ_READ,
-		DevExt->PhysicalDeviceObject,
+		DevExt->LowerDeviceObject,
 		DBR,
 		DBR_LENGTH,
 		&readOffset

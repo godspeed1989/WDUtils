@@ -1,7 +1,5 @@
 #include "List.h"
 
-//#define TEST
-
 #if defined(USE_OCP)
 
 VOID InitList (PList List)

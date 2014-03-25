@@ -4,6 +4,16 @@
 #define USER_APP
 #endif
 
+#define SECTOR_SIZE						512
+#define NSB								1		/* Number Sectors per Block */
+#define BLOCK_SIZE						(SECTOR_SIZE*NSB)
+
+#ifndef USE_DRAM
+#define BLOCK_RESERVE					(16<<20)
+#else
+#define BLOCK_RESERVE					(0)
+#endif
+
 #ifndef USER_APP
 	#include <Ntifs.h>
 	#define CACHE_POOL_TAG						'cpiD'

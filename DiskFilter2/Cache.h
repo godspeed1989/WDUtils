@@ -5,15 +5,17 @@
 #include "Storage.h"
 
 #define READ_VERIFY
-//#define USE_LRU
+#define USE_LRU
 //#define USE_LFU
 //#define USE_SLRU
-#define USE_SLFU
+//#define USE_SLFU
 //#define USE_OCP
 
 #define _READ_								TRUE
 #define _WRITE_								FALSE
 #define CACHE_POOL_SIZE						200		/* MB */
+#define WB_QUEUE_SIZE						1		/* MB */
+#define WRITE_BACK_ENABLE
 
 typedef struct _CACHE_BLOCK
 {
@@ -44,15 +46,15 @@ typedef struct _CACHE_BLOCK
 #define HEAP_DAT_T CACHE_BLOCK
 typedef struct _HeapEntry
 {
-	HEAP_VAL_T	Value;
-	HEAP_DAT_T*	pData;
+	HEAP_VAL_T		Value;
+	HEAP_DAT_T*		pData;
 }HeapEntry, *PHeapEntry;
 
 typedef struct _Heap
 {
-	ULONG		Size;
-	ULONG		Used;
-	PHeapEntry*	Entries;
+	ULONG			Size;
+	ULONG			Used;
+	PHeapEntry*		Entries;
 }Heap, *PHeap;
 
 #define LIST_DAT_T CACHE_BLOCK
@@ -63,11 +65,24 @@ typedef struct _List
 	LIST_DAT_T*		Tail;
 }List, *PList;
 
+#define QUEUE_DAT_T PCACHE_BLOCK
+typedef struct _Queue
+{
+	ULONG			Size;
+	ULONG			Used;
+	ULONG			Head;
+	ULONG			Tail;
+	QUEUE_DAT_T*	Data;
+}Queue, *PQueue;
+
 typedef struct _CACHE_POOL
 {
 	ULONG			Size;
 	ULONG			Used;
 	STORAGE_POOL	Storage;
+#ifdef WRITE_BACK_ENABLE
+	Queue			WbQueue;
+#endif
 #if defined(USE_LFU) || defined(USE_LRU)
 	Heap			Heap;
 	node*			bpt_root;
@@ -142,31 +157,38 @@ VOID			_FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BO
 VOID			_IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock);
 BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 
-#define detect_broken(Off,Len,front_broken,end_broken,front_skip,end_cut)	\
-		do{												\
-			front_broken=FALSE;							\
-			end_broken=FALSE;							\
-			front_skip=0;								\
-			end_cut=0;									\
-			if(Off%BLOCK_SIZE!=0)						\
-			{											\
-				front_broken=TRUE;						\
-				front_skip=BLOCK_SIZE-(Off%BLOCK_SIZE);	\
-				Off+=front_skip;						\
-				Len=(Len>front_skip)?(Len-front_skip):0;\
-			}											\
-			if(Len%BLOCK_SIZE!=0)						\
-			{											\
-				end_broken=TRUE;						\
-				end_cut=Len%BLOCK_SIZE;					\
-			}											\
+/*
+    	off
+    +---------+---------+------+--+
+    |    | fb |   ...   |  eb  |  |
+    +---------+---------+------+--+
+*/
+#define detect_broken(Off,Len,front_broken,end_broken,front_skip,end_cut)		\
+		do{																		\
+			front_broken = FALSE;												\
+			end_broken = FALSE;													\
+			front_skip = 0;														\
+			end_cut =0 ;														\
+			if(Off % BLOCK_SIZE !=0)											\
+			{																	\
+				front_broken = TRUE;											\
+				front_skip = BLOCK_SIZE - (Off%BLOCK_SIZE);						\
+				Off += front_skip;												\
+				front_skip = (Len>front_skip)?front_skip:Len;					\
+				Len = Len-front_skip;											\
+			}																	\
+			if(Len % BLOCK_SIZE != 0)											\
+			{																	\
+				end_broken = TRUE;												\
+				end_cut = Len%BLOCK_SIZE;										\
+			}																	\
 		}while(0);
 
 #define DO_READ_VERIFY(Storage,pBlock,PhysicalDeviceObject)						\
 		while (g_bDataVerify)													\
 		{																		\
 			NTSTATUS Status;													\
-			ULONG matched;														\
+			SIZE_T matched;														\
 			PUCHAR D1, D2;														\
 			LARGE_INTEGER readOffset;											\
 			D1 = ExAllocatePoolWithTag(NonPagedPool, BLOCK_SIZE, 'tmpb');		\
@@ -187,7 +209,7 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 			else																\
 				matched = 9999999;												\
 			if (matched != BLOCK_SIZE)											\
-				DbgPrint("%s: %d-%d: --(%d)->(%d)--\n", __FUNCTION__,			\
+				DbgPrint("%s: %d-%d: --(%d)->(%Iu)--\n", __FUNCTION__,			\
 					DiskNumber, PartitionNumber, BLOCK_SIZE, matched);			\
 			ExFreePoolWithTag(D1, 'tmpb');										\
 			ExFreePoolWithTag(D2, 'tmpb');										\
