@@ -14,6 +14,9 @@
 #define BLOCK_RESERVE					(0)
 #endif
 
+#define WB_QUEUE_SIZE					1		/* MB */
+#define WRITE_BACK_ENABLE
+
 #ifndef USER_APP
 	#include <Ntifs.h>
 	#define CACHE_POOL_TAG						'cpiD'
@@ -27,6 +30,7 @@
 													(SIZE_T)(n),		\
 													BPT_POOL_TAG		\
 												)
+	#define ZeroMemory(dest,len)				RtlZeroMemory(dest,len)
 #else
 	#include <stdlib.h>
 	#include <string.h>

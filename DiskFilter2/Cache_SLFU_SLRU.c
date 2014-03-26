@@ -36,16 +36,8 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 	ret = InitHeap(&CachePool->ProtectedHeap, CachePool->ProtectedSize);
 	if (ret == FALSE)
 		goto l_error;
-#ifdef WRITE_BACK_ENABLE
-	ret = InitQueue(&CachePool->WbQueue, (WB_QUEUE_SIZE << 20)/(BLOCK_SIZE));
-	if (ret == FALSE)
-		goto l_error;
-#endif
 	return TRUE;
 l_error:
-#ifdef WRITE_BACK_ENABLE
-	DestroyQueue(&CachePool->WbQueue);
-#endif
 	DestroyHeap(&CachePool->ProtectedHeap);
 	DestroyHeap(&CachePool->ProbationaryHeap);
 	DestroyStoragePool(&CachePool->Storage);

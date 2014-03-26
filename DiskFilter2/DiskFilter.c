@@ -206,6 +206,7 @@ DF_AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject)
 	DeviceObject->Characteristics = LowerDeviceObject->Characteristics;
 	DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
+	DevExt->bIsStart = FALSE;
 	return STATUS_SUCCESS;
 l_error:
 	if (LowerDeviceObject)

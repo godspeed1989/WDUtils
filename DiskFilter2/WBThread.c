@@ -2,10 +2,7 @@
 #include "Utils.h"
 #include "Queue.h"
 
-BOOLEAN InsertWriteBackQueue(QUEUE_DAT_T Data)
-{
-	return TRUE;
-}
+#ifdef WRITE_BACK_ENABLE
 
 VOID DF_WriteBackThread(PVOID Context)
 {
@@ -29,7 +26,7 @@ VOID DF_WriteBackThread(PVOID Context)
 		if (DevExt->CachePool.WbQueue.Used == 0)
 			continue;
 
-		// Flush Back Data
+		// Flush Back All Data
 		KeAcquireSpinLock(&DevExt->WbQueueSpinLock, &Irql);
 		while (NULL != (pBlock = QueueRemove(&DevExt->CachePool.WbQueue)))
 		{
@@ -57,3 +54,5 @@ VOID DF_WriteBackThread(PVOID Context)
 		}
 	} // forever loop
 }
+
+#endif

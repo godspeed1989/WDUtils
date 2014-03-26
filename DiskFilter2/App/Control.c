@@ -47,8 +47,6 @@ struct command
 };
 struct command options[] =
 {
-	//{"sa", "Start All Filters", IOCTL_DF_START_ALL},
-	//{"qa", "Stop All Filters", IOCTL_DF_STOP_ALL},
 	{"start", "Start One Filter", IOCTL_DF_START},
 	{"stop", "Stop One Filter", IOCTL_DF_STOP},
 	{"stat", "Get Statistic on One Volume", IOCTL_DF_GET_STAT},

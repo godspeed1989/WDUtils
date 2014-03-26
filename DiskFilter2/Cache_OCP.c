@@ -27,16 +27,8 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 		);
 	if (ret == FALSE)
 		goto l_error;
-#ifdef WRITE_BACK_ENABLE
-	ret = InitQueue(&CachePool->WbQueue, (WB_QUEUE_SIZE << 20)/(BLOCK_SIZE));
-	if (ret == FALSE)
-		goto l_error;
-#endif
 	return TRUE;
 l_error:
-#ifdef WRITE_BACK_ENABLE
-	DestroyQueue(&CachePool->WbQueue);
-#endif
 	DestroyStoragePool(&CachePool->Storage);
 	ZeroMemory(CachePool, sizeof(CACHE_POOL));
 	return FALSE;

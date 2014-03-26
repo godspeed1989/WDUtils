@@ -45,10 +45,12 @@ typedef struct _DF_DEVICE_EXTENSION
 	KEVENT			RwThreadEvent;
 	KSPIN_LOCK		RwListSpinLock;
 	// WB Thread
+#ifdef WRITE_BACK_ENABLE
 	PVOID			WbThreadObject;
 	BOOLEAN			bTerminalWbThread;
 	KEVENT			WbThreadEvent;
 	KSPIN_LOCK		WbQueueSpinLock;
+#endif
 	// Cache Pool
 	CACHE_POOL		CachePool;
 	// For Pnp

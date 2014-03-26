@@ -14,8 +14,6 @@
 #define _READ_								TRUE
 #define _WRITE_								FALSE
 #define CACHE_POOL_SIZE						200		/* MB */
-#define WB_QUEUE_SIZE						1		/* MB */
-#define WRITE_BACK_ENABLE
 
 typedef struct _CACHE_BLOCK
 {
@@ -215,5 +213,3 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 			ExFreePoolWithTag(D2, 'tmpb');										\
 			break;																\
 		}
-
-#define ZeroMemory(dest,len) RtlZeroMemory(dest,len)

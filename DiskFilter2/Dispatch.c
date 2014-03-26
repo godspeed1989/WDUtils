@@ -89,38 +89,6 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 			Irp->IoStatus.Status = STATUS_SUCCESS;
 			IoCompleteRequest(Irp, IO_NO_INCREMENT);
 			return Irp->IoStatus.Status;
-		// Start or Stop All Filters
-		case IOCTL_DF_START_ALL:
-		case IOCTL_DF_STOP_ALL:
-			Type = (IOCTL_DF_START_ALL == IrpSp->Parameters.DeviceIoControl.IoControlCode);
-			DBG_PRINT(DBG_TRACE_OPS, ("%s: %s All Filters\n", __FUNCTION__, Type?"Start":"Stop"));
-			/*DeviceObject = g_pDriverObject->DeviceObject;
-			while (DeviceObject != NULL)
-			{
-				DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
-				if (DeviceObject != g_pDeviceObject)
-				{
-					if (Type == FALSE)
-					{
-						DevExt->CacheHit = 0;
-						DevExt->ReadCount = 0;
-						DevExt->WriteCount = 0;
-						DestroyCachePool(&DevExt->CachePool);
-						DevExt->bIsProtected = FALSE;
-					}
-					else if (DevExt->bIsProtected == FALSE)
-					{
-						if (InitCachePool(&DevExt->CachePool, 1, 1) == TRUE)
-							DevExt->bIsProtected = TRUE;
-						else
-							KdPrint(("%s:%d-%d: Init Cache Pool Error\n", __FUNCTION__,
-										DevExt->DiskNumber, DevExt->PartitionNumber));
-					}
-				}
-				DeviceObject = DeviceObject->NextDevice;
-			}*/
-			COMPLETE_IRP(Irp, STATUS_SUCCESS);
-			return Irp->IoStatus.Status;
 		// Start or Stop One Filter
 		case IOCTL_DF_START:
 		case IOCTL_DF_STOP:
@@ -145,11 +113,17 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 					Status = STATUS_SUCCESS;
 					if (Type == FALSE)
 					{
+						DevExt->bIsProtected = FALSE;
+						// TODO: Wait for unfinished ops in dispatch function
+						KeSetEvent(&DevExt->WbThreadEvent, IO_NO_INCREMENT, FALSE);
 						DevExt->CacheHit = 0;
 						DevExt->ReadCount = 0;
 						DevExt->WriteCount = 0;
+					#ifdef WRITE_BACK_ENABLE
+						// Flush Back All Data
+						KeSetEvent(&DevExt->WbThreadEvent, IO_NO_INCREMENT, FALSE);
+					#endif
 						DestroyCachePool(&DevExt->CachePool);
-						DevExt->bIsProtected = FALSE;
 					}
 					else if (DevExt->bIsProtected == FALSE)
 					{
@@ -157,10 +131,17 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 						#ifndef USE_DRAM
 							,((ULONG32*)InputBuffer)[2] ,((ULONG32*)InputBuffer)[3]
 						#endif
-							) == TRUE)
+							) == TRUE
+						#ifdef WRITE_BACK_ENABLE
+							&& InitQueue(&DevExt->CachePool.WbQueue, (WB_QUEUE_SIZE << 20)/(BLOCK_SIZE)) == TRUE
+						#endif
+						)
 							DevExt->bIsProtected = TRUE;
 						else
 						{
+						#ifdef WRITE_BACK_ENABLE
+							DestroyQueue(&DevExt->CachePool.WbQueue);
+						#endif
 							DestroyCachePool(&DevExt->CachePool);
 							DevExt->bIsProtected = FALSE;
 							KdPrint(("%s: %d-%d: Init Cache Pool Error\n", __FUNCTION__,

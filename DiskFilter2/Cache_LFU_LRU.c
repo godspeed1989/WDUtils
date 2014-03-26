@@ -27,20 +27,12 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 		);
 	if (ret == FALSE)
 		goto l_error;
-#ifdef WRITE_BACK_ENABLE
-	ret = InitQueue(&CachePool->WbQueue, (WB_QUEUE_SIZE << 20)/(BLOCK_SIZE));
-	if (ret == FALSE)
-		goto l_error;
-#endif
 	ret = InitHeap(&CachePool->Heap, CachePool->Size);
 	if (ret == FALSE)
 		goto l_error;
 	return TRUE;
 l_error:
 	DestroyHeap(&CachePool->Heap);
-#ifdef WRITE_BACK_ENABLE
-	DestroyQueue(&CachePool->WbQueue);
-#endif
 	DestroyStoragePool(&CachePool->Storage);
 	ZeroMemory(CachePool, sizeof(CACHE_POOL));
 	return FALSE;
@@ -48,10 +40,6 @@ l_error:
 
 VOID DestroyCachePool(PCACHE_POOL CachePool)
 {
-#ifdef WRITE_BACK_ENABLE
-	//TODO: Flush Back All
-	DestroyQueue(&CachePool->WbQueue);
-#endif
 	// B+ Tree Destroy
 	DestroyHeap(&CachePool->Heap);
 	Destroy_Tree(CachePool->bpt_root);
