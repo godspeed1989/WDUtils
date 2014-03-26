@@ -35,21 +35,19 @@ typedef struct _DF_DEVICE_EXTENSION
 	ULONG			DiskNumber;
 	ULONG			PartitionNumber;
 	// Statictis
-	ULONG32			CacheHit;
 	ULONG32			ReadCount;
 	ULONG32			WriteCount;
 	// RW Thread
 	LIST_ENTRY		RwList;
+	KSPIN_LOCK		RwListSpinLock;
 	PVOID			RwThreadObject;
 	BOOLEAN			bTerminalRwThread;
 	KEVENT			RwThreadEvent;
-	KSPIN_LOCK		RwListSpinLock;
 	// WB Thread
 #ifdef WRITE_BACK_ENABLE
 	PVOID			WbThreadObject;
 	BOOLEAN			bTerminalWbThread;
 	KEVENT			WbThreadEvent;
-	KSPIN_LOCK		WbQueueSpinLock;
 #endif
 	// Cache Pool
 	CACHE_POOL		CachePool;

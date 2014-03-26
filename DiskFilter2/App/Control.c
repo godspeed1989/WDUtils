@@ -144,13 +144,14 @@ int main(int argc, char *argv[])
 						printf("DeviceIoControl Error.\n");
 						break;
 					}
-					if (strcmp(istr, "stat") == 0 && dwOutBytes >= 5*sizeof(ULONG32))
+					if (strcmp(istr, "stat") == 0 && dwOutBytes >= 6*sizeof(ULONG32))
 					{
-						printf("CacheHit:  %10d\n", oBuffer[0]);
-						printf("ReadCount: %10d\n", oBuffer[1]);
-						printf("WriteCount:%10d\n", oBuffer[2]);
-						printf("CacheSize: %10d\n", oBuffer[3]);
-						printf("CacheUsed: %10d\n", oBuffer[4]);
+						printf("ReadHit:  %10d\n", oBuffer[0]);
+						printf("WriteHit: %10d\n", oBuffer[1]);
+						printf("ReadCount: %10d\n", oBuffer[2]);
+						printf("WriteCount:%10d\n", oBuffer[3]);
+						printf("CacheSize: %10d\n", oBuffer[4]);
+						printf("CacheUsed: %10d\n", oBuffer[5]);
 					}
 					break;
 				}

@@ -73,12 +73,12 @@ VOID DF_ReadWriteThread(PVOID Context)
 
 			if (IrpSp->MajorFunction == IRP_MJ_READ)
 			{
-				DevExt->ReadCount++;
+				DevExt->ReadCount += Length / BLOCK_SIZE;
 				DBG_PRINT(DBG_TRACE_RW, ("%u-%u: R off(%I64d) len(%d)\n", DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
 			}
 			else
 			{
-				DevExt->WriteCount++;
+				DevExt->WriteCount += Length / BLOCK_SIZE;
 				DBG_PRINT(DBG_TRACE_RW, ("%u-%u: W off(%I64d) len(%d)\n", DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
 			}
 
@@ -98,8 +98,8 @@ VOID DF_ReadWriteThread(PVOID Context)
 					#endif
 						) == TRUE)
 				{
-					DBG_PRINT(DBG_TRACE_CACHE, ("hit:%u-%u: off(%I64d) len(%d)\n", DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
-					DevExt->CacheHit++;
+					DBG_PRINT(DBG_TRACE_CACHE, ("rhit:%u-%u: off(%I64d) len(%d)\n", DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
+					DevExt->CachePool.ReadHit += Length / BLOCK_SIZE;
 					Irp->IoStatus.Status = STATUS_SUCCESS;
 					Irp->IoStatus.Information = Length;
 					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
@@ -112,15 +112,14 @@ VOID DF_ReadWriteThread(PVOID Context)
 					ForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp);
 					if (NT_SUCCESS(Irp->IoStatus.Status))
 					{
-						UpdataCachePool(&DevExt->CachePool,
-										SysBuf, Offset,
-										Length, _READ_
-									#ifdef READ_VERIFY
-										,DevExt->LowerDeviceObject
-										,DevExt->DiskNumber
-										,DevExt->PartitionNumber
-									#endif
-										);
+						ReadUpdataCachePool(&DevExt->CachePool,
+											SysBuf, Offset, Length
+										#ifdef READ_VERIFY
+											,DevExt->LowerDeviceObject
+											,DevExt->DiskNumber
+											,DevExt->PartitionNumber
+										#endif
+											);
 						IoCompleteRequest(Irp, IO_DISK_INCREMENT);
 						continue;
 					}
@@ -136,20 +135,67 @@ VOID DF_ReadWriteThread(PVOID Context)
 			// Write Request
 			else
 			{
+			#ifndef WRITE_BACK_ENABLE
+				Irp->IoStatus.Information = 0;
+				Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+				ForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp);
+				if (!NT_SUCCESS(Irp->IoStatus.Status))
+				{
+					Irp->IoStatus.Information = 0;
+					Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+					continue;
+				}
+			#endif
+				// Cache Full Hitted
+				if (QueryAndWriteToCachePool(
+						&DevExt->CachePool,
+						SysBuf,
+						Offset,
+						Length
+					#ifdef READ_VERIFY
+						,DevExt->LowerDeviceObject
+						,DevExt->DiskNumber
+						,DevExt->PartitionNumber
+					#endif
+						) == TRUE)
+				{
+					DBG_PRINT(DBG_TRACE_CACHE, ("whit:%u-%u: off(%I64d) len(%d)\n", DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
+					DevExt->CachePool.WriteHit += Length / BLOCK_SIZE;
+					Irp->IoStatus.Status = STATUS_SUCCESS;
+					Irp->IoStatus.Information = Length;
+					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+					continue;
+				}
+				else
+				{
+					WriteUpdataCachePool(&DevExt->CachePool,
+										SysBuf, Offset, Length
+									#ifdef READ_VERIFY
+										,DevExt->LowerDeviceObject
+										,DevExt->DiskNumber
+										,DevExt->PartitionNumber
+									#endif
+										);
+					Irp->IoStatus.Status = STATUS_SUCCESS;
+					Irp->IoStatus.Information = Length;
+					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+					continue;
+				}
+			#ifndef WRITE_BACK_ENABLE
 				Irp->IoStatus.Information = 0;
 				Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
 				ForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp);
 				if (NT_SUCCESS(Irp->IoStatus.Status))
 				{
-					UpdataCachePool(&DevExt->CachePool,
-									SysBuf, Offset,
-									Length, _WRITE_
-								#ifdef READ_VERIFY
-									,DevExt->LowerDeviceObject
-									,DevExt->DiskNumber
-									,DevExt->PartitionNumber
-								#endif
-									);
+					WriteUpdataCachePool(&DevExt->CachePool,
+										SysBuf, Offset, Length
+									#ifdef READ_VERIFY
+										,DevExt->LowerDeviceObject
+										,DevExt->DiskNumber
+										,DevExt->PartitionNumber
+									#endif
+										);
 					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
 					continue;
 				}
@@ -160,6 +206,7 @@ VOID DF_ReadWriteThread(PVOID Context)
 					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
 					continue;
 				}
+			#endif
 			}
 		} // while list not empty
 	} // forever loop

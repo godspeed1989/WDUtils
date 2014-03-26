@@ -248,7 +248,7 @@ VOID StartDevice(PDEVICE_OBJECT DeviceObject)
 	DevExt->WbThreadObject = NULL;
 	DevExt->bTerminalWbThread = FALSE;
 	ZeroMemory(&DevExt->CachePool.WbQueue, sizeof(Queue));
-	KeInitializeSpinLock(&DevExt->WbQueueSpinLock);
+	KeInitializeSpinLock(&DevExt->CachePool.WbQueueSpinLock);
 	KeInitializeEvent(&DevExt->WbThreadEvent, SynchronizationEvent, FALSE);
 	if (NT_SUCCESS( DF_CreateSystemThread(DF_WriteBackThread, DevExt,
 					&DevExt->WbThreadObject, &DevExt->bTerminalWbThread) ))
@@ -278,6 +278,7 @@ VOID StopDevice(PDEVICE_OBJECT DeviceObject)
 		KeWaitForSingleObject(DevExt->RwThreadObject, Executive, KernelMode, FALSE, NULL);
 		ObDereferenceObject(DevExt->RwThreadObject);
 	}
+#ifdef WRITE_BACK_ENABLE
 	if (DevExt->WbThreadObject)
 	{
 		DevExt->bTerminalWbThread = TRUE;
@@ -285,6 +286,7 @@ VOID StopDevice(PDEVICE_OBJECT DeviceObject)
 		KeWaitForSingleObject(DevExt->WbThreadObject, Executive, KernelMode, FALSE, NULL);
 		ObDereferenceObject(DevExt->WbThreadObject);
 	}
+#endif
 	DestroyCachePool(&DevExt->CachePool);
 	IoDeleteDevice(DeviceObject);
 }

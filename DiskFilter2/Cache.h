@@ -11,8 +11,6 @@
 //#define USE_SLFU
 //#define USE_OCP
 
-#define _READ_								TRUE
-#define _WRITE_								FALSE
 #define CACHE_POOL_SIZE						200		/* MB */
 
 typedef struct _CACHE_BLOCK
@@ -78,8 +76,11 @@ typedef struct _CACHE_POOL
 	ULONG			Size;
 	ULONG			Used;
 	STORAGE_POOL	Storage;
+	ULONG32			ReadHit;
+	ULONG32			WriteHit;
 #ifdef WRITE_BACK_ENABLE
 	Queue			WbQueue;
+	KSPIN_LOCK		WbQueueSpinLock;
 #endif
 #if defined(USE_LFU) || defined(USE_LRU)
 	Heap			Heap;
@@ -131,13 +132,38 @@ BOOLEAN
 	#endif
 	);
 
-VOID
-	UpdataCachePool (
+BOOLEAN
+	QueryAndWriteToCachePool (
 		PCACHE_POOL CachePool,
 		PUCHAR Buf,
 		LONGLONG Offset,
-		ULONG Length,
-		BOOLEAN Type
+		ULONG Length
+	#ifdef READ_VERIFY
+		,PDEVICE_OBJECT LowerDeviceObject
+		,ULONG DiskNumber
+		,ULONG PartitionNumber
+	#endif
+	);
+
+VOID
+	ReadUpdataCachePool (
+		PCACHE_POOL CachePool,
+		PUCHAR Buf,
+		LONGLONG Offset,
+		ULONG Length
+	#ifdef READ_VERIFY
+		,PDEVICE_OBJECT LowerDeviceObject
+		,ULONG DiskNumber
+		,ULONG PartitionNumber
+	#endif
+	);
+
+VOID
+	WriteUpdataCachePool (
+		PCACHE_POOL CachePool,
+		PUCHAR Buf,
+		LONGLONG Offset,
+		ULONG Length
 	#ifdef READ_VERIFY
 		,PDEVICE_OBJECT LowerDeviceObject
 		,ULONG DiskNumber
@@ -161,24 +187,26 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
     |    | fb |   ...   |  eb  |  |
     +---------+---------+------+--+
 */
-#define detect_broken(Off,Len,front_broken,end_broken,front_skip,end_cut)		\
+#define detect_broken(Off,Len,front_broken,end_broken,front_offset,front_skip,end_cut)\
 		do{																		\
 			front_broken = FALSE;												\
 			end_broken = FALSE;													\
+			front_offset = 0;													\
 			front_skip = 0;														\
-			end_cut =0 ;														\
+			end_cut = 0;														\
 			if(Off % BLOCK_SIZE !=0)											\
 			{																	\
 				front_broken = TRUE;											\
-				front_skip = BLOCK_SIZE - (Off%BLOCK_SIZE);						\
+				front_offset = Off % BLOCK_SIZE;								\
+				front_skip = BLOCK_SIZE - front_offset;							\
 				Off += front_skip;												\
-				front_skip = (Len>front_skip)?front_skip:Len;					\
-				Len = Len-front_skip;											\
+				front_skip = (Len>front_skip) ? front_skip : Len;				\
+				Len = Len - front_skip;											\
 			}																	\
 			if(Len % BLOCK_SIZE != 0)											\
 			{																	\
 				end_broken = TRUE;												\
-				end_cut = Len%BLOCK_SIZE;										\
+				end_cut = Len % BLOCK_SIZE;										\
 			}																	\
 		}while(0);
 
@@ -212,4 +240,13 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 			ExFreePoolWithTag(D1, 'tmpb');										\
 			ExFreePoolWithTag(D2, 'tmpb');										\
 			break;																\
+		}
+
+#define ADD_TO_WBQUEUE(pBlock)													\
+		{																		\
+			KIRQL Irql;															\
+			KeAcquireSpinLock(&CachePool->WbQueueSpinLock, &Irql);				\
+			pBlock->Modified = TRUE;											\
+			QueueInsert(&CachePool->WbQueue, pBlock);							\
+			KeReleaseSpinLock(&CachePool->WbQueueSpinLock, Irql);				\
 		}

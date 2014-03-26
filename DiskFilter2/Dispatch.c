@@ -115,8 +115,7 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 					{
 						DevExt->bIsProtected = FALSE;
 						// TODO: Wait for unfinished ops in dispatch function
-						KeSetEvent(&DevExt->WbThreadEvent, IO_NO_INCREMENT, FALSE);
-						DevExt->CacheHit = 0;
+						KeSetEvent(&DevExt->RwThreadEvent, IO_NO_INCREMENT, FALSE);
 						DevExt->ReadCount = 0;
 						DevExt->WriteCount = 0;
 					#ifdef WRITE_BACK_ENABLE
@@ -171,18 +170,20 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 					DevExt->PartitionNumber == ((ULONG32*)InputBuffer)[1])
 				{
 					DBG_PRINT(DBG_TRACE_OPS, ("On disk(%u) partition(%u)\n", DevExt->DiskNumber, DevExt->PartitionNumber));
-					if (Type && OutputLength >= 5 * sizeof(ULONG32))
+					if (Type && OutputLength >= 6 * sizeof(ULONG32))
 					{
-						((ULONG32*)OutputBuffer)[0] = DevExt->CacheHit;
-						((ULONG32*)OutputBuffer)[1] = DevExt->ReadCount;
-						((ULONG32*)OutputBuffer)[2] = DevExt->WriteCount;
-						((ULONG32*)OutputBuffer)[3] = DevExt->CachePool.Size;
-						((ULONG32*)OutputBuffer)[4] = DevExt->CachePool.Used;
-						Irp->IoStatus.Information = 5 * sizeof(ULONG32);
+						((ULONG32*)OutputBuffer)[0] = DevExt->CachePool.ReadHit;
+						((ULONG32*)OutputBuffer)[1] = DevExt->CachePool.WriteHit;
+						((ULONG32*)OutputBuffer)[2] = DevExt->ReadCount;
+						((ULONG32*)OutputBuffer)[3] = DevExt->WriteCount;
+						((ULONG32*)OutputBuffer)[4] = DevExt->CachePool.Size;
+						((ULONG32*)OutputBuffer)[5] = DevExt->CachePool.Used;
+						Irp->IoStatus.Information = 6 * sizeof(ULONG32);
 					}
 					else
 					{
-						DevExt->CacheHit = 0;
+						DevExt->CachePool.ReadHit = 0;
+						DevExt->CachePool.WriteHit = 0;
 						DevExt->ReadCount = 0;
 						DevExt->WriteCount = 0;
 						Irp->IoStatus.Information = 0;

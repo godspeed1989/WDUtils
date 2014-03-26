@@ -27,7 +27,7 @@ VOID DF_WriteBackThread(PVOID Context)
 			continue;
 
 		// Flush Back All Data
-		KeAcquireSpinLock(&DevExt->WbQueueSpinLock, &Irql);
+		KeAcquireSpinLock(&DevExt->CachePool.WbQueueSpinLock, &Irql);
 		while (NULL != (pBlock = QueueRemove(&DevExt->CachePool.WbQueue)))
 		{
 			Offset.QuadPart = pBlock->Index * BLOCK_SIZE;
@@ -43,7 +43,7 @@ VOID DF_WriteBackThread(PVOID Context)
 			);
 			pBlock->Modified = FALSE;
 		}
-		KeReleaseSpinLock(&DevExt->WbQueueSpinLock, Irql);
+		KeReleaseSpinLock(&DevExt->CachePool.WbQueueSpinLock, Irql);
 
 		if (DevExt->bTerminalWbThread)
 		{
