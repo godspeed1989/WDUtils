@@ -157,7 +157,7 @@ VOID WriteUpdateCachePool(
 		_write_update_block(Offset+i, 0, BLOCK_SIZE);
 		Buf += BLOCK_SIZE;
 	}
-	if (end_broken == TRUE && _QueryPoolByIndex(CachePool, Offset+Length, &pBlock) == TRUE)
+	if (end_broken == TRUE)
 	{
 		_write_update_block(Offset+Length, 0, end_cut);
 		Buf += end_cut;
