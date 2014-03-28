@@ -10,8 +10,8 @@ SOURCES=DiskFilter.c            \
         bpt_insert.c            \
         bpt_find.c              \
         bpt_util.c              \
-        Cache_LFU_LRU.c         \
-        Cache_SLFU_SLRU.c       \
+        Cache_LRU.c             \
+        Cache_SLRU.c            \
         Cache_OCP.c             \
         CacheCommon.c           \
         List.c                  \

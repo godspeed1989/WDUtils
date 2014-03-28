@@ -1,13 +1,8 @@
 #include "Cache.h"
-#include "Heap.h"
+#include "List.h"
 #include "Queue.h"
 
-#if defined(USE_SLFU) || defined(USE_SLRU)
-
-#ifdef USE_SLRU
-#include <Ntddk.h>
-#define QueryTickCount(tc) KeQueryTickCount(tc)
-#endif
+#if defined(USE_SLRU)
 
 #define PROTECT_RATIO    2
 BOOLEAN InitCachePool(PCACHE_POOL CachePool
@@ -30,16 +25,12 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 		);
 	if (ret == FALSE)
 		goto l_error;
-	ret = InitHeap(&CachePool->ProbationaryHeap, CachePool->ProbationarySize);
-	if (ret == FALSE)
-		goto l_error;
-	ret = InitHeap(&CachePool->ProtectedHeap, CachePool->ProtectedSize);
-	if (ret == FALSE)
-		goto l_error;
+	InitList(&CachePool->ProbationaryList);
+	InitList(&CachePool->ProtectedList);
 	return TRUE;
 l_error:
-	DestroyHeap(&CachePool->ProtectedHeap);
-	DestroyHeap(&CachePool->ProbationaryHeap);
+	DestroyList(&CachePool->ProtectedList);
+	DestroyList(&CachePool->ProbationaryList);
 	DestroyStoragePool(&CachePool->Storage);
 	ZeroMemory(CachePool, sizeof(CACHE_POOL));
 	return FALSE;
@@ -48,8 +39,8 @@ l_error:
 VOID DestroyCachePool(PCACHE_POOL CachePool)
 {
 	// B+ Tree Destroy
-	DestroyHeap(&CachePool->ProbationaryHeap);
-	DestroyHeap(&CachePool->ProtectedHeap);
+	DestroyList(&CachePool->ProtectedList);
+	DestroyList(&CachePool->ProbationaryList);
 	Destroy_Tree(CachePool->Protected_bpt_root);
 	Destroy_Tree(CachePool->Probationary_bpt_root);
 	DestroyStoragePool(&CachePool->Storage);
@@ -58,7 +49,7 @@ VOID DestroyCachePool(PCACHE_POOL CachePool)
 
 BOOLEAN _IsFull(PCACHE_POOL CachePool)
 {
-	return (CachePool->ProbationaryHeap.Used == CachePool->ProbationarySize);
+	return (CachePool->ProbationaryList.Size == CachePool->ProbationarySize);
 }
 
 /**
@@ -79,43 +70,30 @@ BOOLEAN _QueryPoolByIndex(PCACHE_POOL CachePool, LONGLONG Index, PCACHE_BLOCK *p
 VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 {
 	PCACHE_BLOCK _pBlock, Top;
-#if defined(USE_SLRU)
-	LARGE_INTEGER TickCount;
-#endif
+
 	if (pBlock->Protected == TRUE)
 	{
-		HeapIncreaseValue(&CachePool->ProtectedHeap, pBlock->HeapIndex, 1);
+		ListMoveToHead(&CachePool->ProtectedList, pBlock);
 	}
 	else
 	{
-		HeapDelete(&CachePool->ProbationaryHeap, pBlock->HeapIndex);
+		ListDelete(&CachePool->ProbationaryList, pBlock);
 		CachePool->Probationary_bpt_root = Delete(CachePool->Probationary_bpt_root, pBlock->Index, FALSE);
 		// Protected is Full
-		if (CachePool->ProtectedHeap.Used == CachePool->ProtectedSize)
+		if (CachePool->ProtectedList.Size == CachePool->ProtectedSize)
 		{
 			// Remove one from Protected
-			_pBlock = GetHeapTop(&CachePool->ProtectedHeap);
-			HeapDelete(&CachePool->ProtectedHeap, _pBlock->HeapIndex);
+			_pBlock = ListRemoveTail(&CachePool->ProtectedList);
 			CachePool->Protected_bpt_root = Delete(CachePool->Protected_bpt_root, _pBlock->Index, FALSE);
 			// Move to Probationary
 			// Probationary Obviously Not Full for We just Remove one from it
 			_pBlock->Protected = FALSE;
-		#if defined(USE_SLRU)
-			QueryTickCount(&TickCount);
-			ASSERT(TRUE == HeapInsert(&CachePool->ProbationaryHeap, _pBlock, TickCount.QuadPart));
-		#elif defined(USE_SLFU)
-			ASSERT(TRUE == HeapInsert(&CachePool->ProbationaryHeap, _pBlock, 1));
-		#endif
+			ListInsertToHead(&CachePool->ProbationaryList, _pBlock);
 			CachePool->Probationary_bpt_root = Insert(CachePool->Probationary_bpt_root, _pBlock->Index, _pBlock);
 		}
-		pBlock->Protected = TRUE;
 		// Add to Protected
-	#if defined(USE_SLRU)
-		QueryTickCount(&TickCount);
-		ASSERT(TRUE == HeapInsert(&CachePool->ProtectedHeap, pBlock, TickCount.QuadPart));
-	#elif defined(USE_SLFU)
-		ASSERT(TRUE == HeapInsert(&CachePool->ProtectedHeap, pBlock, 1));
-	#endif
+		pBlock->Protected = TRUE;
+		ListInsertToHead(&CachePool->ProtectedList, pBlock);
 		CachePool->Protected_bpt_root = Insert(CachePool->Protected_bpt_root, pBlock->Index, pBlock);
 	}
 }
@@ -127,15 +105,8 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
 {
 	PCACHE_BLOCK pBlock;
-#if defined(USE_SLRU)
-	LARGE_INTEGER TickCount;
-	QueryTickCount(&TickCount);
-	if((pBlock = __GetFreeBlock(CachePool)) != NULL &&
-		TRUE == HeapInsert(&CachePool->ProbationaryHeap, pBlock, TickCount.QuadPart))
-#elif defined(USE_SLFU)
-	if((pBlock = __GetFreeBlock(CachePool)) != NULL &&
-		TRUE == HeapInsert(&CachePool->ProbationaryHeap, pBlock, 0))
-#endif
+
+	if ((pBlock = __GetFreeBlock(CachePool)) != NULL)
 	{
 		pBlock->Modified = Modified;
 		pBlock->Index = Index;
@@ -147,14 +118,10 @@ BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BO
 			BLOCK_SIZE
 		);
 		CachePool->Used++;
+		ListInsertToHead(&CachePool->ProbationaryList, pBlock);
 		// Insert into bpt
 		CachePool->Probationary_bpt_root = Insert(CachePool->Probationary_bpt_root, Index, pBlock);
 		return TRUE;
-	}
-	if (pBlock != NULL)
-	{
-		StoragePoolFree(&CachePool->Storage, pBlock->StorageIndex);
-		ExFreePoolWithTag(pBlock, CACHE_POOL_TAG);
 	}
 	return FALSE;
 }
@@ -170,12 +137,12 @@ VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 		StoragePoolFree(&CachePool->Storage, pBlock->StorageIndex);
 		if (pBlock->Protected == TRUE)
 		{
-			HeapDelete(&CachePool->ProtectedHeap, pBlock->HeapIndex);
+			ListDelete(&CachePool->ProtectedList, pBlock);
 			CachePool->Protected_bpt_root = Delete(CachePool->Protected_bpt_root, Index, TRUE);
 		}
 		else
 		{
-			HeapDelete(&CachePool->ProbationaryHeap, pBlock->HeapIndex);
+			ListDelete(&CachePool->ProbationaryList, pBlock);
 			CachePool->Probationary_bpt_root = Delete(CachePool->Probationary_bpt_root, Index, TRUE);
 		}
 		CachePool->Used--;
@@ -183,18 +150,19 @@ VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 }
 
 /**
- * Find a Cache Block to Replace when Pool is Full
+ * Find a Non-Modified Cache Block to Replace when Pool is Full
  * (Find From Probationary Segment)
  */
-VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
+PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
 {
 	PCACHE_BLOCK pBlock;
-#if defined(USE_SLRU)
-	LARGE_INTEGER TickCount;
-#endif
-	pBlock = GetHeapTop(&CachePool->ProbationaryHeap);
-	if (NULL == pBlock)
-		return;
+
+	pBlock = CachePool->ProbationaryList.Tail;
+	while (pBlock && pBlock->Modified == TRUE)
+		pBlock = pBlock->Prior;
+	// There always exist Non-Modified Blocks, when Probationary is Full
+	ASSERT(NULL == pBlock);
+
 	CachePool->Probationary_bpt_root = Delete(CachePool->Probationary_bpt_root, pBlock->Index, FALSE);
 	pBlock->Modified = Modified;
 	pBlock->Index = Index;
@@ -205,13 +173,10 @@ VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOL
 		Data,
 		BLOCK_SIZE
 	);
-#if defined(USE_SLRU)
-	QueryTickCount(&TickCount);
-	HeapUpdateValue(&CachePool->ProbationaryHeap, pBlock->HeapIndex, TickCount.QuadPart);
-#elif defined(USE_SLFU)
-	HeapZeroValue(&CachePool->ProbationaryHeap, pBlock->HeapIndex);
-#endif
+
+	ListMoveToHead(&CachePool->ProbationaryList, pBlock);
 	CachePool->Probationary_bpt_root = Insert(CachePool->Probationary_bpt_root, Index, pBlock);
+	return pBlock;
 }
 
 #endif

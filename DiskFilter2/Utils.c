@@ -247,9 +247,10 @@ VOID StartDevice(PDEVICE_OBJECT DeviceObject)
 #ifdef WRITE_BACK_ENABLE
 	DevExt->WbThreadObject = NULL;
 	DevExt->bTerminalWbThread = FALSE;
+	DevExt->CachePool.WbFlushAll = FALSE;
 	ZeroMemory(&DevExt->CachePool.WbQueue, sizeof(Queue));
 	KeInitializeSpinLock(&DevExt->CachePool.WbQueueSpinLock);
-	KeInitializeEvent(&DevExt->WbThreadEvent, SynchronizationEvent, FALSE);
+	KeInitializeEvent(&DevExt->CachePool.WbThreadEvent, SynchronizationEvent, FALSE);
 	if (NT_SUCCESS( DF_CreateSystemThread(DF_WriteBackThread, DevExt,
 					&DevExt->WbThreadObject, &DevExt->bTerminalWbThread) ))
 		KdPrint(("%s: %p WB Thread Start\n", __FUNCTION__, DeviceObject));
@@ -282,7 +283,7 @@ VOID StopDevice(PDEVICE_OBJECT DeviceObject)
 	if (DevExt->WbThreadObject)
 	{
 		DevExt->bTerminalWbThread = TRUE;
-		KeSetEvent(&DevExt->WbThreadEvent, IO_NO_INCREMENT, FALSE);
+		KeSetEvent(&DevExt->CachePool.WbThreadEvent, IO_NO_INCREMENT, FALSE);
 		KeWaitForSingleObject(DevExt->WbThreadObject, Executive, KernelMode, FALSE, NULL);
 		ObDereferenceObject(DevExt->WbThreadObject);
 	}

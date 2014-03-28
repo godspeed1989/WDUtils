@@ -1,6 +1,6 @@
 #include "List.h"
 
-#if defined(USE_OCP)
+#if defined(USE_LRU) || defined(USE_SLRU) || defined(USE_OCP)
 
 VOID InitList (PList List)
 {

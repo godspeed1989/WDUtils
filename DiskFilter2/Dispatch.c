@@ -120,7 +120,9 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 						DevExt->WriteCount = 0;
 					#ifdef WRITE_BACK_ENABLE
 						// Flush Back All Data
-						KeSetEvent(&DevExt->WbThreadEvent, IO_NO_INCREMENT, FALSE);
+						DevExt->CachePool.WbFlushAll = TRUE;
+						KeSetEvent(&DevExt->CachePool.WbThreadEvent, IO_NO_INCREMENT, FALSE);
+						DevExt->CachePool.WbFlushAll = FALSE;
 					#endif
 						DestroyCachePool(&DevExt->CachePool);
 					}

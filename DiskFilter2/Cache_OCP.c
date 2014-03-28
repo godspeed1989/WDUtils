@@ -1,6 +1,5 @@
 #include "Cache.h"
 #include "List.h"
-#include "Queue.h"
 
 #if defined(USE_OCP)
 
@@ -134,9 +133,9 @@ VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 }
 
 /**
- * Find a Cache Block to Replace, When Pool is Full
+ * Find a Non-Modified Cache Block to Replace, When Pool is Full
  */
-VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
+PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
 {
 	ULONG i, Count;
 	PCACHE_BLOCK pBlock;
@@ -150,7 +149,7 @@ VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOL
 		ListInsertToHead(&CachePool->HotList, pBlock);
 		CachePool->hot_bpt_root = Insert(CachePool->hot_bpt_root, pBlock->Index, pBlock);
 	}
-
+	// TODO: Find a Non-Modified to Replace
 	if (pBlock != NULL)
 	{
 		// Replace data and Move it to Cold List Head
@@ -185,6 +184,7 @@ VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOL
 		ListInsertToHead(&CachePool->ColdList, pBlock);
 		CachePool->cold_bpt_root = Insert(CachePool->cold_bpt_root, pBlock->Index, pBlock);
 	}
+	return pBlock;
 }
 
 #endif

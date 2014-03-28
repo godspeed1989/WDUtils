@@ -47,7 +47,6 @@ typedef struct _DF_DEVICE_EXTENSION
 #ifdef WRITE_BACK_ENABLE
 	PVOID			WbThreadObject;
 	BOOLEAN			bTerminalWbThread;
-	KEVENT			WbThreadEvent;
 #endif
 	// Cache Pool
 	CACHE_POOL		CachePool;

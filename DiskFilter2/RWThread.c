@@ -112,7 +112,7 @@ VOID DF_ReadWriteThread(PVOID Context)
 					ForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp);
 					if (NT_SUCCESS(Irp->IoStatus.Status))
 					{
-						ReadUpdataCachePool(&DevExt->CachePool,
+						ReadUpdateCachePool(&DevExt->CachePool,
 											SysBuf, Offset, Length
 										#ifdef READ_VERIFY
 											,DevExt->LowerDeviceObject
@@ -169,7 +169,7 @@ VOID DF_ReadWriteThread(PVOID Context)
 				}
 				else
 				{
-					WriteUpdataCachePool(&DevExt->CachePool,
+					WriteUpdateCachePool(&DevExt->CachePool,
 										SysBuf, Offset, Length
 									#ifdef READ_VERIFY
 										,DevExt->LowerDeviceObject
@@ -182,31 +182,6 @@ VOID DF_ReadWriteThread(PVOID Context)
 					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
 					continue;
 				}
-			#ifndef WRITE_BACK_ENABLE
-				Irp->IoStatus.Information = 0;
-				Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-				ForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp);
-				if (NT_SUCCESS(Irp->IoStatus.Status))
-				{
-					WriteUpdataCachePool(&DevExt->CachePool,
-										SysBuf, Offset, Length
-									#ifdef READ_VERIFY
-										,DevExt->LowerDeviceObject
-										,DevExt->DiskNumber
-										,DevExt->PartitionNumber
-									#endif
-										);
-					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-					continue;
-				}
-				else
-				{
-					Irp->IoStatus.Information = 0;
-					Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-					continue;
-				}
-			#endif
 			}
 		} // while list not empty
 	} // forever loop

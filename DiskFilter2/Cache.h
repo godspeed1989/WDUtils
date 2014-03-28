@@ -6,9 +6,7 @@
 
 #define READ_VERIFY
 #define USE_LRU
-//#define USE_LFU
 //#define USE_SLRU
-//#define USE_SLFU
 //#define USE_OCP
 
 #define CACHE_POOL_SIZE						200		/* MB */
@@ -18,23 +16,20 @@ typedef struct _CACHE_BLOCK
 	BOOLEAN					Modified;
 	LONGLONG				Index;
 	ULONG					StorageIndex;
-#if defined(USE_LFU) || defined(USE_LRU) || \
-	defined(USE_SLFU) || defined(USE_SLRU)
+#if 0
 	ULONG					HeapIndex;
 #endif
-#if defined(USE_SLFU) || defined(USE_SLRU) || defined(USE_OCP)
+#if defined(USE_SLRU) || defined(USE_OCP)
 	ULONG					Protected;
 #endif
-#if defined(USE_OCP)
+#if defined(USE_LRU) || defined(USE_SLRU) || defined(USE_OCP)
 	struct _CACHE_BLOCK*	Prior;
 	struct _CACHE_BLOCK*	Next;
 	ULONG					ReferenceCount;
 #endif
 }CACHE_BLOCK, *PCACHE_BLOCK;
 
-#if defined(USE_LFU) || defined(USE_SLFU)
-#  define HEAP_VAL_T LONG
-#elif  defined(USE_LRU) || defined(USE_SLRU)
+#if 0
 #  define HEAP_VAL_T LONGLONG
 #else
 #  define HEAP_VAL_T LONG
@@ -81,17 +76,19 @@ typedef struct _CACHE_POOL
 #ifdef WRITE_BACK_ENABLE
 	Queue			WbQueue;
 	KSPIN_LOCK		WbQueueSpinLock;
+	BOOLEAN			WbFlushAll;
+	KEVENT			WbThreadEvent;
 #endif
-#if defined(USE_LFU) || defined(USE_LRU)
-	Heap			Heap;
+#if defined(USE_LRU)
+	List			List;
 	node*			bpt_root;
 #endif
-#if defined(USE_SLFU) || defined(USE_SLRU)
+#if defined(USE_SLRU)
 	ULONG			ProbationarySize;
-	Heap			ProbationaryHeap;
+	List			ProbationaryList;
 	node*			Probationary_bpt_root;
 	ULONG			ProtectedSize;
-	Heap			ProtectedHeap;
+	List			ProtectedList;
 	node*			Protected_bpt_root;
 #endif
 #if defined(USE_OCP)
@@ -146,7 +143,7 @@ BOOLEAN
 	);
 
 VOID
-	ReadUpdataCachePool (
+	ReadUpdateCachePool (
 		PCACHE_POOL CachePool,
 		PUCHAR Buf,
 		LONGLONG Offset,
@@ -159,7 +156,7 @@ VOID
 	);
 
 VOID
-	WriteUpdataCachePool (
+	WriteUpdateCachePool (
 		PCACHE_POOL CachePool,
 		PUCHAR Buf,
 		LONGLONG Offset,
@@ -177,7 +174,7 @@ PCACHE_BLOCK	__GetFreeBlock(PCACHE_POOL CachePool);
 BOOLEAN			_AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified);
 VOID			_DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index);
 BOOLEAN			_QueryPoolByIndex(PCACHE_POOL CachePool, LONGLONG Index, PCACHE_BLOCK *ppBlock);
-VOID			_FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified);
+PCACHE_BLOCK	_FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified);
 VOID			_IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock);
 BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 
@@ -210,8 +207,9 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 			}																	\
 		}while(0);
 
-#define DO_READ_VERIFY(Storage,pBlock,PhysicalDeviceObject)						\
-		while (g_bDataVerify)													\
+#ifdef READ_VERIFY
+#define DO_READ_VERIFY(Storage,pBlock)											\
+		while (g_bDataVerify && pBlock->Modified == FALSE)						\
 		{																		\
 			NTSTATUS Status;													\
 			SIZE_T matched;														\
@@ -224,7 +222,7 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 			readOffset.QuadPart = BLOCK_SIZE * pBlock->Index;					\
 			Status = IoDoRWRequestSync (										\
 						IRP_MJ_READ,											\
-						PhysicalDeviceObject,									\
+						LowerDeviceObject,										\
 						D1,														\
 						BLOCK_SIZE,												\
 						&readOffset												\
@@ -241,7 +239,11 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 			ExFreePoolWithTag(D2, 'tmpb');										\
 			break;																\
 		}
+#else
+#define DO_READ_VERIFY(Storage,pBlock)
+#endif
 
+#ifdef WRITE_BACK_ENABLE
 #define ADD_TO_WBQUEUE(pBlock)													\
 		{																		\
 			KIRQL Irql;															\
@@ -249,4 +251,11 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 			pBlock->Modified = TRUE;											\
 			QueueInsert(&CachePool->WbQueue, pBlock);							\
 			KeReleaseSpinLock(&CachePool->WbQueueSpinLock, Irql);				\
+			KeSetEvent(&CachePool->WbThreadEvent, IO_NO_INCREMENT, FALSE);		\
 		}
+#else
+#define ADD_TO_WBQUEUE(pBlock)													\
+		{																		\
+			pBlock->Modified = TRUE;											\
+		}
+#endif

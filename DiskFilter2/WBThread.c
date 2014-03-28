@@ -20,10 +20,13 @@ VOID DF_WriteBackThread(PVOID Context)
 	KdPrint(("%u-%u: Write Back Thread Start...\n", DevExt->DiskNumber, DevExt->PartitionNumber));
 	for (;;)
 	{
-		KeWaitForSingleObject(&DevExt->WbThreadEvent,
+		KeWaitForSingleObject(&DevExt->CachePool.WbThreadEvent,
 			Executive, KernelMode, FALSE, NULL);
 		// Write Back Strategy
 		if (DevExt->CachePool.WbQueue.Used == 0)
+			continue;
+		if (DevExt->CachePool.WbFlushAll == FALSE &&
+			DevExt->CachePool.WbQueue.Used < DevExt->CachePool.WbQueue.Size)
 			continue;
 
 		// Flush Back All Data

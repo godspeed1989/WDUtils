@@ -1,13 +1,8 @@
 #include "Cache.h"
-#include "Heap.h"
+#include "List.h"
 #include "Queue.h"
 
-#if defined(USE_LFU) || defined(USE_LRU)
-
-#ifdef USE_LRU
-#include <Ntddk.h>
-#define QueryTickCount(tc) KeQueryTickCount(tc)
-#endif
+#if defined(USE_LRU)
 
 BOOLEAN InitCachePool(PCACHE_POOL CachePool
 					#ifndef USE_DRAM
@@ -27,12 +22,9 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 		);
 	if (ret == FALSE)
 		goto l_error;
-	ret = InitHeap(&CachePool->Heap, CachePool->Size);
-	if (ret == FALSE)
-		goto l_error;
+	InitList(&CachePool->List);
 	return TRUE;
 l_error:
-	DestroyHeap(&CachePool->Heap);
 	DestroyStoragePool(&CachePool->Storage);
 	ZeroMemory(CachePool, sizeof(CACHE_POOL));
 	return FALSE;
@@ -41,7 +33,6 @@ l_error:
 VOID DestroyCachePool(PCACHE_POOL CachePool)
 {
 	// B+ Tree Destroy
-	DestroyHeap(&CachePool->Heap);
 	Destroy_Tree(CachePool->bpt_root);
 	DestroyStoragePool(&CachePool->Storage);
 	ZeroMemory(CachePool, sizeof(CACHE_POOL));
@@ -67,13 +58,7 @@ BOOLEAN _QueryPoolByIndex(PCACHE_POOL CachePool, LONGLONG Index, PCACHE_BLOCK *p
 
 VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 {
-#if defined(USE_LRU)
-	LARGE_INTEGER TickCount;
-	QueryTickCount(&TickCount);
-	HeapUpdateValue(&CachePool->Heap, pBlock->HeapIndex, TickCount.QuadPart);
-#elif defined(USE_LFU)
-	HeapIncreaseValue(&CachePool->Heap, pBlock->HeapIndex, 1);
-#endif
+	ListMoveToHead(&CachePool->List, pBlock);
 }
 
 /**
@@ -82,15 +67,7 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
 {
 	PCACHE_BLOCK pBlock;
-#if defined(USE_LRU)
-	LARGE_INTEGER TickCount;
-	QueryTickCount(&TickCount);
-	if((pBlock = __GetFreeBlock(CachePool)) != NULL &&
-		TRUE == HeapInsert(&CachePool->Heap, pBlock, TickCount.QuadPart))
-#elif defined(USE_LFU)
-	if((pBlock = __GetFreeBlock(CachePool)) != NULL &&
-		TRUE == HeapInsert(&CachePool->Heap, pBlock, 0))
-#endif
+	if ((pBlock = __GetFreeBlock(CachePool)) != NULL)
 	{
 		pBlock->Modified = Modified;
 		pBlock->Index = Index;
@@ -101,14 +78,10 @@ BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BO
 			BLOCK_SIZE
 		);
 		CachePool->Used++;
+		ListInsertToHead(&CachePool->List, pBlock);
 		// Insert into bpt
 		CachePool->bpt_root = Insert(CachePool->bpt_root, Index, pBlock);
 		return TRUE;
-	}
-	if (pBlock != NULL)
-	{
-		StoragePoolFree(&CachePool->Storage, pBlock->StorageIndex);
-		ExFreePoolWithTag(pBlock, CACHE_POOL_TAG);
 	}
 	return FALSE;
 }
@@ -121,25 +94,26 @@ VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 	PCACHE_BLOCK pBlock;
 	if (_QueryPoolByIndex(CachePool, Index, &pBlock) == TRUE)
 	{
+		ListDelete(&CachePool->List, pBlock);
 		StoragePoolFree(&CachePool->Storage, pBlock->StorageIndex);
-		HeapDelete(&CachePool->Heap, pBlock->HeapIndex);
 		CachePool->bpt_root = Delete(CachePool->bpt_root, Index, TRUE);
 		CachePool->Used--;
 	}
 }
 
 /**
- * Find a Cache Block to Replace when Pool is Full
+ * Find a Non-Modified Cache Block to Replace, when Pool is Full
  */
-VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
+PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
 {
 	PCACHE_BLOCK pBlock;
-#if defined(USE_LRU)
-	LARGE_INTEGER TickCount;
-#endif
-	pBlock = GetHeapTop(&CachePool->Heap);
-	if (NULL == pBlock)
-		return;
+
+	pBlock = CachePool->List.Tail;
+	while (pBlock && pBlock->Modified == TRUE)
+		pBlock = pBlock->Prior;
+	// There always exist Non-Modified Blocks, when Pool is Full
+	ASSERT(NULL == pBlock);
+
 	CachePool->bpt_root = Delete(CachePool->bpt_root, pBlock->Index, FALSE);
 	pBlock->Modified = Modified;
 	pBlock->Index = Index;
@@ -149,13 +123,10 @@ VOID _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOL
 		Data,
 		BLOCK_SIZE
 	);
-#if defined(USE_LRU)
-	QueryTickCount(&TickCount);
-	HeapUpdateValue(&CachePool->Heap, pBlock->HeapIndex, TickCount.QuadPart);
-#elif defined(USE_LFU)
-	HeapZeroValue(&CachePool->Heap, pBlock->HeapIndex);
-#endif
+
+	ListMoveToHead(&CachePool->List, pBlock);
 	CachePool->bpt_root = Insert(CachePool->bpt_root, Index, pBlock);
+	return pBlock;
 }
 
 #endif
