@@ -102,10 +102,9 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
  * Add one Block to Cache Pool, When Pool is not Full
  * (Add to Probationary Segment)
  */
-BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
+PCACHE_BLOCK _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
 {
 	PCACHE_BLOCK pBlock;
-
 	if ((pBlock = __GetFreeBlock(CachePool)) != NULL)
 	{
 		pBlock->Modified = Modified;
@@ -121,9 +120,8 @@ BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BO
 		ListInsertToHead(&CachePool->ProbationaryList, pBlock);
 		// Insert into bpt
 		CachePool->Probationary_bpt_root = Insert(CachePool->Probationary_bpt_root, Index, pBlock);
-		return TRUE;
 	}
-	return FALSE;
+	return pBlock;
 }
 
 /**
@@ -158,24 +156,38 @@ PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 	PCACHE_BLOCK pBlock;
 
 	pBlock = CachePool->ProbationaryList.Tail;
+#ifdef WRITE_BACK_ENABLE
+	// Backfoward find first Non-Modified in Probationary List
 	while (pBlock && pBlock->Modified == TRUE)
 		pBlock = pBlock->Prior;
-	// There always exist Non-Modified Blocks, when Probationary is Full
-	ASSERT(NULL == pBlock);
+#endif
 
-	CachePool->Probationary_bpt_root = Delete(CachePool->Probationary_bpt_root, pBlock->Index, FALSE);
-	pBlock->Modified = Modified;
-	pBlock->Index = Index;
-	pBlock->Protected = FALSE;
-	StoragePoolWrite (
-		&CachePool->Storage,
-		pBlock->StorageIndex, 0,
-		Data,
-		BLOCK_SIZE
-	);
+	if (pBlock)
+	{
+		CachePool->Probationary_bpt_root = Delete(CachePool->Probationary_bpt_root, pBlock->Index, FALSE);
+		pBlock->Modified = Modified;
+		pBlock->Index = Index;
+		pBlock->Protected = FALSE;
+		StoragePoolWrite (
+			&CachePool->Storage,
+			pBlock->StorageIndex, 0,
+			Data,
+			BLOCK_SIZE
+		);
+		ListMoveToHead(&CachePool->ProbationaryList, pBlock);
+		CachePool->Probationary_bpt_root = Insert(CachePool->Probationary_bpt_root, Index, pBlock);
+	}
+#ifdef WRITE_BACK_ENABLE
+	else
+	{
+		// There always exist Non-Modified Blocks, When Probationary is Full
+		ASSERT(CachePool->ProbationaryList.Size < CachePool->ProbationarySize);
+		// Cold List not full
+		pBlock = _AddNewBlockToPool(CachePool, Index, Data, Modified);
+		ASSERT(pBlock);
+	}
+#endif
 
-	ListMoveToHead(&CachePool->ProbationaryList, pBlock);
-	CachePool->Probationary_bpt_root = Insert(CachePool->Probationary_bpt_root, Index, pBlock);
 	return pBlock;
 }
 

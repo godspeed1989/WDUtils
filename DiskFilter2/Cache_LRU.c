@@ -64,7 +64,7 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
 /**
  * Add one Block to Cache Pool, When Pool is not Full
  */
-BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
+PCACHE_BLOCK _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
 {
 	PCACHE_BLOCK pBlock;
 	if ((pBlock = __GetFreeBlock(CachePool)) != NULL)
@@ -81,9 +81,8 @@ BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BO
 		ListInsertToHead(&CachePool->List, pBlock);
 		// Insert into bpt
 		CachePool->bpt_root = Insert(CachePool->bpt_root, Index, pBlock);
-		return TRUE;
 	}
-	return FALSE;
+	return pBlock;
 }
 
 /**
@@ -109,23 +108,37 @@ PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 	PCACHE_BLOCK pBlock;
 
 	pBlock = CachePool->List.Tail;
+#ifdef WRITE_BACK_ENABLE
+	// Backfoward find first Non-Modified
 	while (pBlock && pBlock->Modified == TRUE)
 		pBlock = pBlock->Prior;
-	// There always exist Non-Modified Blocks, when Pool is Full
-	ASSERT(NULL == pBlock);
+#endif
 
-	CachePool->bpt_root = Delete(CachePool->bpt_root, pBlock->Index, FALSE);
-	pBlock->Modified = Modified;
-	pBlock->Index = Index;
-	StoragePoolWrite (
-		&CachePool->Storage,
-		pBlock->StorageIndex, 0,
-		Data,
-		BLOCK_SIZE
-	);
+	if (pBlock)
+	{
+		CachePool->bpt_root = Delete(CachePool->bpt_root, pBlock->Index, FALSE);
+		pBlock->Modified = Modified;
+		pBlock->Index = Index;
+		StoragePoolWrite (
+			&CachePool->Storage,
+			pBlock->StorageIndex, 0,
+			Data,
+			BLOCK_SIZE
+		);
+		ListMoveToHead(&CachePool->List, pBlock);
+		CachePool->bpt_root = Insert(CachePool->bpt_root, Index, pBlock);
+	}
+#ifdef WRITE_BACK_ENABLE
+	else
+	{
+		// There always exist Non-Modified Blocks, When cold list is Full
+		ASSERT(CachePool->List.Size < CachePool->Size);
+		// Pool not full
+		pBlock = _AddNewBlockToPool(CachePool, Index, Data, Modified);
+		ASSERT(pBlock);
+	}
+#endif
 
-	ListMoveToHead(&CachePool->List, pBlock);
-	CachePool->bpt_root = Insert(CachePool->bpt_root, Index, pBlock);
 	return pBlock;
 }
 

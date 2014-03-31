@@ -17,7 +17,7 @@ InitStoragePool(PSTORAGE_POOL StoragePool, ULONG Size
 #endif
 	RtlZeroMemory(StoragePool, sizeof(STORAGE_POOL));
 	StoragePool->Size = Size;
-	StoragePool->TotalSize = BLOCK_SIZE*Size;
+	StoragePool->TotalSize = BLOCK_SIZE * Size + BLOCK_RESERVE;
 
 	StoragePool->Bitmap_Buffer = ExAllocatePoolWithTag (
 		NonPagedPool,
@@ -35,7 +35,7 @@ InitStoragePool(PSTORAGE_POOL StoragePool, ULONG Size
 
 #ifdef USE_DRAM
 	StoragePool->Buffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool,
-							(SIZE_T)(BLOCK_SIZE*Size), STORAGE_POOL_TAG);
+							(SIZE_T)(StoragePool->TotalSize), STORAGE_POOL_TAG);
 	if (StoragePool->Buffer == NULL)
 		goto l_error;
 #else
@@ -54,7 +54,7 @@ InitStoragePool(PSTORAGE_POOL StoragePool, ULONG Size
 	);
 	if (!NT_SUCCESS(Status))
 		goto l_error;
-	if (StoragePool->TotalSize + BLOCK_RESERVE > PartitionInfo.PartitionLength.QuadPart)
+	if (StoragePool->TotalSize > PartitionInfo.PartitionLength.QuadPart)
 		goto l_error;
 #endif
 	return TRUE;

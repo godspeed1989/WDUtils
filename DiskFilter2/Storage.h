@@ -2,6 +2,12 @@
 #include "common.h"
 #include "DiskFilterIoctl.h"
 
+#ifndef USE_DRAM
+#define BLOCK_RESERVE					(16<<20)
+#else
+#define BLOCK_RESERVE					(0)
+#endif
+
 typedef struct _STORAGE_POOL
 {
 	ULONG			Size;

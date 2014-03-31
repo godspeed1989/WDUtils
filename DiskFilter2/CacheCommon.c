@@ -52,46 +52,49 @@ VOID ReadUpdateCachePool(
 #endif
 )
 {
-	ULONG i, front_offset, front_skip, end_cut;
+	PUCHAR origBuf;
+	ULONG i, front_offset, front_skip, end_cut, origLen;
 	PCACHE_BLOCK pBlock;
 	BOOLEAN front_broken, end_broken;
+
+	origBuf = Buf;
+	origLen = Length;
 
 	detect_broken(Offset, Length, front_broken, end_broken, front_offset, front_skip, end_cut);
 	Offset /= BLOCK_SIZE;
 	Length /= BLOCK_SIZE;
 
-	if (front_broken == TRUE)
+#define _read_update_block(Index, Offset, Buf, Length) 					\
+		if(_QueryPoolByIndex(CachePool, Index, &pBlock) == TRUE)		\
+		{																\
+			DO_READ_VERIFY(&CachePool->Storage, pBlock);				\
+			_IncreaseBlockReference(CachePool, pBlock);					\
+		}																\
+		else if (_IsFull(CachePool) == FALSE)							\
+		{																\
+			pBlock = _AddNewBlockToPool(CachePool, Index, Buf, TRUE);	\
+		}																\
+		else															\
+		{																\
+			pBlock = _FindBlockToReplace(CachePool, Index, Buf, TRUE);	\
+		}
+
+	if(front_broken == TRUE)
+	{
+		_read_update_block(Offset-1, front_offset, Buf, front_skip);
 		Buf += front_skip;
+	}
 	for (i = 0; i < Length; i++)
 	{
-		// Still have empty cache block
-		if (_IsFull(CachePool) == FALSE)
-		{
-			// Not to duplicate
-			if(_QueryPoolByIndex(CachePool, Offset+i, &pBlock) == FALSE)
-				_AddNewBlockToPool(CachePool, Offset+i, Buf+i*BLOCK_SIZE, FALSE);
-			else
-			{
-				DO_READ_VERIFY(&CachePool->Storage, pBlock);
-				_IncreaseBlockReference(CachePool, pBlock);
-			}
-		}
-		else
-			break;
+		_read_update_block(Offset+i, 0, Buf, BLOCK_SIZE);
+		Buf += BLOCK_SIZE;
 	}
-	// Pool is Full
-	while (i < Length)
+	if (end_broken == TRUE)
 	{
-		// Not to duplicate
-		if(_QueryPoolByIndex(CachePool, Offset+i, &pBlock) == FALSE)
-			_FindBlockToReplace(CachePool, Offset+i, Buf+i*BLOCK_SIZE, FALSE);
-		else
-		{
-			DO_READ_VERIFY(&CachePool->Storage, pBlock);
-			_IncreaseBlockReference(CachePool, pBlock);
-		}
-		i++;
+		_read_update_block(Offset+Length, 0, Buf, end_cut);
+		Buf += end_cut;
 	}
+	ASSERT(Buf - origBuf == origLen);
 }
 
 #define _write_data(pBlock,off,Buf,len)					\
@@ -130,7 +133,7 @@ VOID WriteUpdateCachePool(
 	Offset /= BLOCK_SIZE;
 	Length /= BLOCK_SIZE;
 
-#define _write_update_block(Index, Offset, Length) 						\
+#define _write_update_block(Index, Offset, Buf, Length) 				\
 		if(_QueryPoolByIndex(CachePool, Index, &pBlock) == TRUE)		\
 		{																\
 			DO_READ_VERIFY(&CachePool->Storage, pBlock);				\
@@ -138,7 +141,7 @@ VOID WriteUpdateCachePool(
 		}																\
 		else if (_IsFull(CachePool) == FALSE)							\
 		{																\
-			_AddNewBlockToPool(CachePool, Index, Buf, TRUE);			\
+			pBlock = _AddNewBlockToPool(CachePool, Index, Buf, TRUE);	\
 			ADD_TO_WBQUEUE(pBlock);										\
 		}																\
 		else															\
@@ -149,17 +152,17 @@ VOID WriteUpdateCachePool(
 
 	if(front_broken == TRUE)
 	{
-		_write_update_block(Offset-1, front_offset, front_skip);
+		_write_update_block(Offset-1, front_offset, Buf, front_skip);
 		Buf += front_skip;
 	}
 	for (i = 0; i < Length; i++)
 	{
-		_write_update_block(Offset+i, 0, BLOCK_SIZE);
+		_write_update_block(Offset+i, 0, Buf, BLOCK_SIZE);
 		Buf += BLOCK_SIZE;
 	}
 	if (end_broken == TRUE)
 	{
-		_write_update_block(Offset+Length, 0, end_cut);
+		_write_update_block(Offset+Length, 0, Buf, end_cut);
 		Buf += end_cut;
 	}
 	ASSERT(Buf - origBuf == origLen);

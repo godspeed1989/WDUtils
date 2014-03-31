@@ -8,12 +8,6 @@
 #define NSB								1		/* Number Sectors per Block */
 #define BLOCK_SIZE						(SECTOR_SIZE*NSB)
 
-#ifndef USE_DRAM
-#define BLOCK_RESERVE					(16<<20)
-#else
-#define BLOCK_RESERVE					(0)
-#endif
-
 #define WB_QUEUE_SIZE					1		/* MB */
 #define WRITE_BACK_ENABLE
 

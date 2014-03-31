@@ -5,11 +5,11 @@
 #include "Storage.h"
 
 #define READ_VERIFY
-#define USE_LRU
-//#define USE_SLRU
+//#define USE_LRU
+#define USE_SLRU
 //#define USE_OCP
 
-#define CACHE_POOL_SIZE						200		/* MB */
+#define CACHE_POOL_SIZE						50		/* MB */
 
 typedef struct _CACHE_BLOCK
 {
@@ -171,7 +171,7 @@ VOID
  * Internal Functions Used by Common Function
  */
 PCACHE_BLOCK	__GetFreeBlock(PCACHE_POOL CachePool);
-BOOLEAN			_AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified);
+PCACHE_BLOCK	_AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified);
 VOID			_DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index);
 BOOLEAN			_QueryPoolByIndex(PCACHE_POOL CachePool, LONGLONG Index, PCACHE_BLOCK *ppBlock);
 PCACHE_BLOCK	_FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified);
@@ -256,6 +256,7 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 #else
 #define ADD_TO_WBQUEUE(pBlock)													\
 		{																		\
-			pBlock->Modified = TRUE;											\
+			if (pBlock)															\
+				pBlock->Modified = TRUE;										\
 		}
 #endif

@@ -82,7 +82,7 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
  * Add one Block to Cache Pool, When Pool is not Full
  * (Add to Cold List Head)
  */
-BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
+PCACHE_BLOCK _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
 {
 	PCACHE_BLOCK pBlock;
 	if ((pBlock = __GetFreeBlock(CachePool)) != NULL)
@@ -104,9 +104,8 @@ BOOLEAN _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BO
 		ListInsertToHead(&CachePool->ColdList, pBlock);
 		// Insert into bpt
 		CachePool->cold_bpt_root = Insert(CachePool->cold_bpt_root, Index, pBlock);
-		return TRUE;
 	}
-	return FALSE;
+	return pBlock;
 }
 
 /**
@@ -139,30 +138,45 @@ PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 {
 	ULONG i, Count;
 	PCACHE_BLOCK pBlock, ret;
-	BOOLEAN add_new;
 
-	// Backfoward find first refcnt < 2
+	// Backfoward find first refcnt < 2 in Cold List
 	while ((pBlock = CachePool->ColdList.Tail) && pBlock->ReferenceCount >= 2)
 	{
-		ListDelete(&CachePool->ColdList, pBlock);
 		pBlock->Protected = TRUE;
 		pBlock->ReferenceCount = 0;
+		ListDelete(&CachePool->ColdList, pBlock);
 		CachePool->cold_bpt_root = Delete(CachePool->cold_bpt_root, pBlock->Index, FALSE);
 		// Move to hot list head
 		ListInsertToHead(&CachePool->HotList, pBlock);
 		CachePool->hot_bpt_root = Insert(CachePool->hot_bpt_root, pBlock->Index, pBlock);
 	}
 
-	// Find a Non-Modified to Replace
+	// If Hot List is full, move extras to Cold List Head
+	// The Cold List Will Never full for ...
+	Count = CachePool->HotList.Size > CachePool->HotSize ?
+			CachePool->HotList.Size - CachePool->HotSize : 0;
+	for (i = 0; i < Count; i++)
+	{
+		pBlock->Protected = FALSE;
+		pBlock = ListRemoveTail(&CachePool->HotList);
+		CachePool->hot_bpt_root = Delete(CachePool->hot_bpt_root, pBlock->Index, FALSE);
+		// Move to cold list head
+		ListInsertToHead(&CachePool->ColdList, pBlock);
+		CachePool->cold_bpt_root = Insert(CachePool->cold_bpt_root, pBlock->Index, pBlock);
+	}
+
 	pBlock = CachePool->ColdList.Tail;
+#ifdef WRITE_BACK_ENABLE
+	// Backfoward find first Non-Modified in Cold List
 	while (pBlock && pBlock->Modified == TRUE)
 		pBlock = pBlock->Prior;
+#endif
 
-	add_new = FALSE;
-	if (pBlock != NULL)
+	if (pBlock)
 	{
-		// Replace data and Move it to Cold List Head
+		ListDelete(&CachePool->ColdList, pBlock);
 		CachePool->cold_bpt_root = Delete(CachePool->cold_bpt_root, pBlock->Index, FALSE);
+		// Update Data
 		pBlock->Index = Index;
 		pBlock->ReferenceCount = 1;
 		pBlock->Modified = Modified;
@@ -174,41 +188,19 @@ PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 		);
 		ListInsertToHead(&CachePool->ColdList, pBlock);
 		CachePool->cold_bpt_root = Insert(CachePool->cold_bpt_root, pBlock->Index, pBlock);
-		ret = pBlock;
 	}
+#ifdef WRITE_BACK_ENABLE
 	else
 	{
-		_AddNewBlockToPool(CachePool, Index, Data, Modified);
-		ret = CachePool->ColdList.Head;
-		add_new = TRUE;
+		// There always exist Non-Modified Blocks, When cold list is Full
+		ASSERT(CachePool->ColdList.Size < CachePool->ColdSize);
+		// Cold List not full
+		pBlock = _AddNewBlockToPool(CachePool, Index, Data, Modified);
+		ASSERT(pBlock);
 	}
+#endif
 
-	Count = CachePool->HotList.Size > CachePool->HotSize ?
-			CachePool->HotList.Size - CachePool->HotSize : 0;
-	// If Hot List is full, move extras to Cold List
-	// The Cold List Will Never full for ...
-	for (i = 0; i < Count; i++)
-	{
-		pBlock = ListRemoveTail(&CachePool->HotList);
-		pBlock->Protected = FALSE;
-		CachePool->hot_bpt_root = Delete(CachePool->hot_bpt_root, pBlock->Index, FALSE);
-		// Move to hot list head
-		ListInsertToHead(&CachePool->ColdList, pBlock);
-		CachePool->cold_bpt_root = Insert(CachePool->cold_bpt_root, pBlock->Index, pBlock);
-	}
-
-	if (add_new == TRUE && CachePool->ColdList.Size > CachePool->ColdSize)
-	{
-		pBlock = CachePool->ColdList.Tail;
-		while (pBlock && pBlock->Modified == TRUE)
-			pBlock = pBlock->Prior;
-		// There always exist Non-Modified Blocks, when cold list is Full
-		ASSERT(NULL == pBlock);
-		ListDelete(&CachePool->ColdList, pBlock);
-		CachePool->cold_bpt_root = Delete(CachePool->cold_bpt_root, pBlock->Index, TRUE);
-	}
-
-	return ret;
+	return pBlock;
 }
 
 #endif

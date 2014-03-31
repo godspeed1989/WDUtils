@@ -146,8 +146,8 @@ int main(int argc, char *argv[])
 					}
 					if (strcmp(istr, "stat") == 0 && dwOutBytes >= 6*sizeof(ULONG32))
 					{
-						printf("ReadHit:  %10d\n", oBuffer[0]);
-						printf("WriteHit: %10d\n", oBuffer[1]);
+						printf("ReadHit:   %10d\n", oBuffer[0]);
+						printf("WriteHit:  %10d\n", oBuffer[1]);
 						printf("ReadCount: %10d\n", oBuffer[2]);
 						printf("WriteCount:%10d\n", oBuffer[3]);
 						printf("CacheSize: %10d\n", oBuffer[4]);
