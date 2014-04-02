@@ -77,7 +77,8 @@ typedef struct _CACHE_POOL
 	Queue			WbQueue;
 	KSPIN_LOCK		WbQueueSpinLock;
 	BOOLEAN			WbFlushAll;
-	KEVENT			WbThreadEvent;
+	KEVENT			WbThreadStartEvent;
+	KEVENT			WbThreadFinishEvent;
 #endif
 #if defined(USE_LRU)
 	List			List;
@@ -244,14 +245,21 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 #endif
 
 #ifdef WRITE_BACK_ENABLE
-#define ADD_TO_WBQUEUE(pBlock)													\
-		{																		\
-			KIRQL Irql;															\
-			KeAcquireSpinLock(&CachePool->WbQueueSpinLock, &Irql);				\
-			pBlock->Modified = TRUE;											\
-			QueueInsert(&CachePool->WbQueue, pBlock);							\
-			KeReleaseSpinLock(&CachePool->WbQueueSpinLock, Irql);				\
-			KeSetEvent(&CachePool->WbThreadEvent, IO_NO_INCREMENT, FALSE);		\
+#define ADD_TO_WBQUEUE(pBlock)														\
+		{																			\
+			KIRQL Irql;																\
+			if (QueueIsFull(&CachePool->WbQueue))									\
+			{DbgPrint("full\n");																		\
+				KeSetEvent(&CachePool->WbThreadStartEvent, IO_NO_INCREMENT, FALSE);	\
+				DbgPrint("wait for finish\n");	\
+				KeWaitForSingleObject(&CachePool->WbThreadFinishEvent,				\
+										Executive, KernelMode, FALSE, NULL);		\
+			}																		\
+			KeAcquireSpinLock(&CachePool->WbQueueSpinLock, &Irql);					\
+			pBlock->Modified = TRUE;												\
+			ASSERT(TRUE == QueueInsert(&CachePool->WbQueue, pBlock));				\
+			KeReleaseSpinLock(&CachePool->WbQueueSpinLock, Irql);					\
+			KeSetEvent(&CachePool->WbThreadStartEvent, IO_NO_INCREMENT, FALSE);		\
 		}
 #else
 #define ADD_TO_WBQUEUE(pBlock)													\

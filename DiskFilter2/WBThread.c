@@ -20,17 +20,19 @@ VOID DF_WriteBackThread(PVOID Context)
 	KdPrint(("%u-%u: Write Back Thread Start...\n", DevExt->DiskNumber, DevExt->PartitionNumber));
 	for (;;)
 	{
-		KeWaitForSingleObject(&DevExt->CachePool.WbThreadEvent,
+		KeWaitForSingleObject(&DevExt->CachePool.WbThreadStartEvent,
 			Executive, KernelMode, FALSE, NULL);
+
 		// Write Back Strategy
 		if (DevExt->CachePool.WbQueue.Used == 0)
 			continue;
 		if (DevExt->CachePool.WbFlushAll == FALSE &&
 			DevExt->CachePool.WbQueue.Used < DevExt->CachePool.WbQueue.Size)
 			continue;
-
+DbgPrint("FlushBack: +++++\n");
 		// Flush Back All Data
 		KeAcquireSpinLock(&DevExt->CachePool.WbQueueSpinLock, &Irql);
+DbgPrint("FlushBack: ------\n");
 		while (NULL != (pBlock = QueueRemove(&DevExt->CachePool.WbQueue)))
 		{
 			Offset.QuadPart = pBlock->Index * BLOCK_SIZE;
@@ -47,6 +49,8 @@ VOID DF_WriteBackThread(PVOID Context)
 			pBlock->Modified = FALSE;
 		}
 		KeReleaseSpinLock(&DevExt->CachePool.WbQueueSpinLock, Irql);
+DbgPrint("FlushBack: ^^^^^^\n");
+		KeSetEvent(&DevExt->CachePool.WbThreadFinishEvent, IO_NO_INCREMENT, FALSE);
 
 		if (DevExt->bTerminalWbThread)
 		{

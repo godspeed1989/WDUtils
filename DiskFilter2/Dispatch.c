@@ -121,7 +121,9 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 					#ifdef WRITE_BACK_ENABLE
 						// Flush Back All Data
 						DevExt->CachePool.WbFlushAll = TRUE;
-						KeSetEvent(&DevExt->CachePool.WbThreadEvent, IO_NO_INCREMENT, FALSE);
+						KeSetEvent(&DevExt->CachePool.WbThreadStartEvent, IO_NO_INCREMENT, FALSE);
+						KeWaitForSingleObject(&DevExt->CachePool.WbThreadFinishEvent,
+												Executive, KernelMode, FALSE, NULL);
 						DevExt->CachePool.WbFlushAll = FALSE;
 					#endif
 						DestroyCachePool(&DevExt->CachePool);
@@ -359,7 +361,6 @@ DF_DispatchReadWrite(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 			&Irp->Tail.Overlay.ListEntry, &DevExt->RwListSpinLock);
 		// Set Event
 		KeSetEvent(&DevExt->RwThreadEvent, IO_NO_INCREMENT, FALSE);
-
 		return STATUS_PENDING;
 	}
 	IoSkipCurrentIrpStackLocation(Irp);

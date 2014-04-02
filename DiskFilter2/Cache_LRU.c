@@ -12,7 +12,8 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 {
 	BOOLEAN ret;
 
-	ZeroMemory(CachePool, sizeof(CACHE_POOL));
+	CachePool->Size = CachePool->Used = 0;
+	CachePool->ReadHit = CachePool->WriteHit = 0;
 	CachePool->Size = (CACHE_POOL_SIZE << 20)/(BLOCK_SIZE);
 
 	ret = InitStoragePool(&CachePool->Storage, CachePool->Size
@@ -22,20 +23,20 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 		);
 	if (ret == FALSE)
 		goto l_error;
+	CachePool->bpt_root = NULL;
 	InitList(&CachePool->List);
 	return TRUE;
 l_error:
 	DestroyStoragePool(&CachePool->Storage);
-	ZeroMemory(CachePool, sizeof(CACHE_POOL));
 	return FALSE;
 }
 
 VOID DestroyCachePool(PCACHE_POOL CachePool)
 {
 	// B+ Tree Destroy
+	DestroyList(&CachePool->List);
 	Destroy_Tree(CachePool->bpt_root);
 	DestroyStoragePool(&CachePool->Storage);
-	ZeroMemory(CachePool, sizeof(CACHE_POOL));
 }
 
 BOOLEAN _IsFull(PCACHE_POOL CachePool)

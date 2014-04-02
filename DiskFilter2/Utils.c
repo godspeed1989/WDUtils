@@ -250,7 +250,8 @@ VOID StartDevice(PDEVICE_OBJECT DeviceObject)
 	DevExt->CachePool.WbFlushAll = FALSE;
 	ZeroMemory(&DevExt->CachePool.WbQueue, sizeof(Queue));
 	KeInitializeSpinLock(&DevExt->CachePool.WbQueueSpinLock);
-	KeInitializeEvent(&DevExt->CachePool.WbThreadEvent, SynchronizationEvent, FALSE);
+	KeInitializeEvent(&(DevExt->CachePool.WbThreadStartEvent), SynchronizationEvent, FALSE);
+	KeInitializeEvent(&(DevExt->CachePool.WbThreadFinishEvent), SynchronizationEvent, FALSE);
 	if (NT_SUCCESS( DF_CreateSystemThread(DF_WriteBackThread, DevExt,
 					&DevExt->WbThreadObject, &DevExt->bTerminalWbThread) ))
 		KdPrint(("%s: %p WB Thread Start\n", __FUNCTION__, DeviceObject));
@@ -283,7 +284,7 @@ VOID StopDevice(PDEVICE_OBJECT DeviceObject)
 	if (DevExt->WbThreadObject)
 	{
 		DevExt->bTerminalWbThread = TRUE;
-		KeSetEvent(&DevExt->CachePool.WbThreadEvent, IO_NO_INCREMENT, FALSE);
+		KeSetEvent(&DevExt->CachePool.WbThreadStartEvent, IO_NO_INCREMENT, FALSE);
 		KeWaitForSingleObject(DevExt->WbThreadObject, Executive, KernelMode, FALSE, NULL);
 		ObDereferenceObject(DevExt->WbThreadObject);
 	}

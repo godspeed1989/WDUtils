@@ -13,7 +13,8 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 {
 	BOOLEAN ret;
 
-	ZeroMemory(CachePool, sizeof(CACHE_POOL));
+	CachePool->Size = CachePool->Used = 0;
+	CachePool->ReadHit = CachePool->WriteHit = 0;
 	CachePool->Size = (CACHE_POOL_SIZE << 20)/(BLOCK_SIZE);
 	CachePool->ProtectedSize = CachePool->Size / PROTECT_RATIO;
 	CachePool->ProbationarySize = CachePool->Size - CachePool->ProtectedSize;
@@ -25,14 +26,13 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 		);
 	if (ret == FALSE)
 		goto l_error;
+	CachePool->Protected_bpt_root = NULL;
+	CachePool->Probationary_bpt_root = NULL;
 	InitList(&CachePool->ProbationaryList);
 	InitList(&CachePool->ProtectedList);
 	return TRUE;
 l_error:
-	DestroyList(&CachePool->ProtectedList);
-	DestroyList(&CachePool->ProbationaryList);
 	DestroyStoragePool(&CachePool->Storage);
-	ZeroMemory(CachePool, sizeof(CACHE_POOL));
 	return FALSE;
 }
 
@@ -44,7 +44,6 @@ VOID DestroyCachePool(PCACHE_POOL CachePool)
 	Destroy_Tree(CachePool->Protected_bpt_root);
 	Destroy_Tree(CachePool->Probationary_bpt_root);
 	DestroyStoragePool(&CachePool->Storage);
-	ZeroMemory(CachePool, sizeof(CACHE_POOL));
 }
 
 BOOLEAN _IsFull(PCACHE_POOL CachePool)
@@ -181,6 +180,7 @@ PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 	else
 	{
 		// There always exist Non-Modified Blocks, When Probationary is Full
+		DbgPrint("%d -.- %d\n", CachePool->ProbationaryList.Size , CachePool->ProbationarySize);
 		ASSERT(CachePool->ProbationaryList.Size < CachePool->ProbationarySize);
 		// Cold List not full
 		pBlock = _AddNewBlockToPool(CachePool, Index, Data, Modified);
