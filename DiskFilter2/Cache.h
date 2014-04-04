@@ -248,10 +248,9 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 #define ADD_TO_WBQUEUE(pBlock)														\
 		{																			\
 			KIRQL Irql;																\
-			if (QueueIsFull(&CachePool->WbQueue))									\
-			{DbgPrint("full\n");																		\
+			while (QueueIsFull(&CachePool->WbQueue))								\
+			{																		\
 				KeSetEvent(&CachePool->WbThreadStartEvent, IO_NO_INCREMENT, FALSE);	\
-				DbgPrint("wait for finish\n");	\
 				KeWaitForSingleObject(&CachePool->WbThreadFinishEvent,				\
 										Executive, KernelMode, FALSE, NULL);		\
 			}																		\

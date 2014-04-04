@@ -5,7 +5,7 @@
 
 #define KEY_T      LONGLONG
 #define VAL_T      void*
-#define order     (KEY_T)(32)
+#define order     (KEY_T)(128)
 
 typedef struct _node
 {

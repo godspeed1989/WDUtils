@@ -43,22 +43,21 @@ NTSTATUS ForwardIrpSynchronously (PDEVICE_OBJECT DeviceObject, PIRP Irp)
 IO_COMPLETION_ROUTINE RWRequestCompletion;
 NTSTATUS RWRequestCompletion (PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
 {
-	PMDL mdl, nextMdl;
+	PMDL mdl;
 	UNREFERENCED_PARAMETER(DeviceObject);
 
-	KeSetEvent((PKEVENT)Context, (KPRIORITY)0, FALSE);
-	if(Irp->AssociatedIrp.SystemBuffer && (Irp->Flags & IRP_DEALLOCATE_BUFFER) )
+	if (Context)
+		KeSetEvent((PKEVENT)Context, IO_NO_INCREMENT, FALSE);
+	if(Irp->AssociatedIrp.SystemBuffer && (Irp->Flags & IRP_DEALLOCATE_BUFFER))
 	{
 		ExFreePool(Irp->AssociatedIrp.SystemBuffer);
 	}
-	else if (Irp->MdlAddress != NULL)
+	while (Irp->MdlAddress)
 	{
-		for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl)
-		{
-			nextMdl = mdl->Next;
-			MmUnlockPages( mdl ); IoFreeMdl( mdl );
-		}
-		Irp->MdlAddress = NULL;
+		mdl = Irp->MdlAddress;
+		Irp->MdlAddress = mdl->Next;
+		MmUnlockPages(mdl);
+		IoFreeMdl(mdl);
 	}
 	IoFreeIrp(Irp);
 
@@ -75,9 +74,7 @@ NTSTATUS IoDoRWRequestAsync (
 {
 	PIRP   			Irp	= NULL;
 	IO_STATUS_BLOCK	iosb;
-	KEVENT			Event;
 
-	KeInitializeEvent(&Event, NotificationEvent, FALSE);
 	Irp = IoBuildAsynchronousFsdRequest (
 		MajorFunction,
 		DeviceObject,
@@ -91,7 +88,8 @@ NTSTATUS IoDoRWRequestAsync (
 		KdPrint(("%s: Build IRP failed!\n", __FUNCTION__));
 		return STATUS_UNSUCCESSFUL;
 	}
-	IoSetCompletionRoutine(Irp, RWRequestCompletion, &Event, TRUE, TRUE, TRUE);
+	IoSetCompletionRoutine(Irp, RWRequestCompletion, NULL, TRUE, TRUE, TRUE);
+	Irp->UserIosb = NULL;
 
 	IoCallDriver(DeviceObject, Irp);
 	return STATUS_SUCCESS;
@@ -110,14 +108,12 @@ NTSTATUS IoDoRWRequestSync (
 	IO_STATUS_BLOCK	iosb;
 	KEVENT			Event;
 
-	KeInitializeEvent(&Event, NotificationEvent, FALSE);
-	Irp = IoBuildSynchronousFsdRequest (
+	Irp = IoBuildAsynchronousFsdRequest (
 		MajorFunction,
 		DeviceObject,
 		Buffer,
 		Length,
 		StartingOffset,
-		&Event,
 		&iosb
 	);
 	if (NULL == Irp)
@@ -125,6 +121,9 @@ NTSTATUS IoDoRWRequestSync (
 		KdPrint(("%s: Build IRP failed!\n", __FUNCTION__));
 		return STATUS_UNSUCCESSFUL;
 	}
+
+	KeInitializeEvent(&Event, NotificationEvent, FALSE);
+	IoSetCompletionRoutine(Irp, RWRequestCompletion, &Event, TRUE, TRUE, TRUE);
 	if (IoCallDriver(DeviceObject, Irp) == STATUS_PENDING)
 	{
 		KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
