@@ -24,9 +24,8 @@ VOID DF_WriteBackThread(PVOID Context)
 			Executive, KernelMode, FALSE, NULL);
 
 		// Write Back Strategy
-		if (DevExt->CachePool.WbQueue.Used == 0)
-			continue;
-		if (DevExt->CachePool.WbFlushAll == FALSE &&
+		if (DevExt->bTerminalWbThread == FALSE &&
+			DevExt->CachePool.WbFlushAll == FALSE &&
 			DevExt->CachePool.WbQueue.Used < DevExt->CachePool.WbQueue.Size)
 			continue;
 
@@ -53,7 +52,7 @@ VOID DF_WriteBackThread(PVOID Context)
 		if (DevExt->bTerminalWbThread)
 		{
 			ExFreePoolWithTag(Data, 'tmpb');
-			KdPrint(("Write Back Thread Exit...\n"));
+			KdPrint(("%u-%u: Write Back Thread Exit...\n", DevExt->DiskNumber, DevExt->PartitionNumber));
 			PsTerminateSystemThread(STATUS_SUCCESS);
 			return;
 		}

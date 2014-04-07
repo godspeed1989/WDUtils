@@ -8,7 +8,7 @@
 #define NSB								1		/* Number Sectors per Block */
 #define BLOCK_SIZE						(SECTOR_SIZE*NSB)
 
-#define WB_QUEUE_SIZE					1		/* MB */
+#define WB_QUEUE_SIZE					5		/* MB */
 #define WRITE_BACK_ENABLE
 
 #ifndef USER_APP

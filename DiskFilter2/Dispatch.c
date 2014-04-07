@@ -113,11 +113,12 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 					Status = STATUS_SUCCESS;
 					if (Type == FALSE)
 					{
-						DevExt->bIsProtected = FALSE;
-						// TODO: Wait for unfinished ops in dispatch function
-						KeSetEvent(&DevExt->RwThreadEvent, IO_NO_INCREMENT, FALSE);
 						DevExt->ReadCount = 0;
 						DevExt->WriteCount = 0;
+						DevExt->bIsProtected = FALSE;
+						// Wait for unfinished Ops in RW Thread
+						KeSetEvent(&DevExt->RwThreadStartEvent, IO_NO_INCREMENT, FALSE);
+						KeWaitForSingleObject(&DevExt->RwThreadFinishEvent, Executive, KernelMode, FALSE, NULL);
 					#ifdef WRITE_BACK_ENABLE
 						// Flush Back All Data
 						DevExt->CachePool.WbFlushAll = TRUE;
@@ -332,12 +333,14 @@ DF_DispatchPnp(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		}
 		break;
 	case IRP_MN_REMOVE_DEVICE:
-		DBG_PRINT(DBG_TRACE_OPS, ("%s: Removing device ...\n", __FUNCTION__));
-		IoForwardIrpSynchronously(DeviceObject, Irp);
+		DBG_PRINT(DBG_TRACE_OPS, ("%s: Removing Device...\n", __FUNCTION__));
+		IoForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp);
 		status = Irp->IoStatus.Status;
 		if (NT_SUCCESS(status))
 		{
+			DBG_PRINT(DBG_TRACE_OPS, ("%s: Stoping Device...\n", __FUNCTION__));
 			StopDevice(DeviceObject);
+			DBG_PRINT(DBG_TRACE_OPS, ("%s: Device Stopped.\n", __FUNCTION__));
 		}
 		IoCompleteRequest(Irp, IO_NO_INCREMENT);
 		return status;
@@ -360,7 +363,7 @@ DF_DispatchReadWrite(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		ExInterlockedInsertTailList(&DevExt->RwList,
 			&Irp->Tail.Overlay.ListEntry, &DevExt->RwListSpinLock);
 		// Set Event
-		KeSetEvent(&DevExt->RwThreadEvent, IO_NO_INCREMENT, FALSE);
+		KeSetEvent(&DevExt->RwThreadStartEvent, IO_NO_INCREMENT, FALSE);
 		return STATUS_PENDING;
 	}
 	IoSkipCurrentIrpStackLocation(Irp);

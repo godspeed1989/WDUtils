@@ -17,15 +17,7 @@ VOID DF_ReadWriteThread(PVOID Context)
 	KdPrint(("%u-%u: Read Write Thread Start...\n", DevExt->DiskNumber, DevExt->PartitionNumber));
 	for (;;)
 	{
-		KeWaitForSingleObject(&DevExt->RwThreadEvent,
-			Executive, KernelMode, FALSE, NULL);
-		if (DevExt->bTerminalRwThread)
-		{
-			PsTerminateSystemThread(STATUS_SUCCESS);
-			KdPrint(("Read Write Thread Exit...\n"));
-			return;
-		}
-
+		KeWaitForSingleObject(&DevExt->RwThreadStartEvent, Executive, KernelMode, FALSE, NULL);
 		while (NULL != (ReqEntry = ExInterlockedRemoveHeadList(
 						&DevExt->RwList, &DevExt->RwListSpinLock)))
 		{
@@ -184,5 +176,13 @@ VOID DF_ReadWriteThread(PVOID Context)
 				}
 			}
 		} // while list not empty
+		KeSetEvent(&DevExt->RwThreadFinishEvent, IO_NO_INCREMENT, FALSE);
+
+		if (DevExt->bTerminalRwThread)
+		{
+			KdPrint(("%u-%u: Read Write Thread Exit...\n", DevExt->DiskNumber, DevExt->PartitionNumber));
+			PsTerminateSystemThread(STATUS_SUCCESS);
+			return;
+		}
 	} // forever loop
 }

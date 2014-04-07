@@ -42,7 +42,8 @@ typedef struct _DF_DEVICE_EXTENSION
 	KSPIN_LOCK		RwListSpinLock;
 	PVOID			RwThreadObject;
 	BOOLEAN			bTerminalRwThread;
-	KEVENT			RwThreadEvent;
+	KEVENT			RwThreadStartEvent;
+	KEVENT			RwThreadFinishEvent;
 	// WB Thread
 #ifdef WRITE_BACK_ENABLE
 	PVOID			WbThreadObject;
