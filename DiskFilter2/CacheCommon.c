@@ -73,7 +73,7 @@ VOID ReadUpdateCachePool(
 		LONGLONG Index = Offset + i;
 		if(_QueryPoolByIndex(CachePool, Index, &pBlock) == TRUE)
 		{
-			DO_READ_VERIFY(&CachePool->Storage, pBlock);
+			DO_READ_VERIFY(CachePool, &CachePool->Storage, pBlock);
 			_IncreaseBlockReference(CachePool, pBlock);
 		}
 		else if (_IsFull(CachePool) == FALSE)
@@ -132,7 +132,7 @@ VOID WriteUpdateCachePool(
 #define _write_update_block(Index, Off, Buf, Length) 					\
 		if(_QueryPoolByIndex(CachePool, Index, &pBlock) == TRUE)		\
 		{																\
-			DO_READ_VERIFY(&CachePool->Storage, pBlock);				\
+			DO_READ_VERIFY(CachePool, &CachePool->Storage, pBlock);		\
 			_write_data(pBlock, Off, Buf, Length);						\
 		}																\
 		else if (_IsFull(CachePool) == FALSE)							\
@@ -222,19 +222,19 @@ BOOLEAN QueryAndCopyFromCachePool (
 	if (front_broken == TRUE)
 	{
 		_copy_data(ppInternalBlocks[0], front_offset, front_skip);
-		DO_READ_VERIFY(&CachePool->Storage, ppInternalBlocks[0]);
+		DO_READ_VERIFY(CachePool, &CachePool->Storage, ppInternalBlocks[0]);
 	}
 
 	for (i = 0; i < Length; i++)
 	{
 		_copy_data(ppInternalBlocks[i+1], 0, BLOCK_SIZE);
-		DO_READ_VERIFY(&CachePool->Storage, ppInternalBlocks[i+1]);
+		DO_READ_VERIFY(CachePool, &CachePool->Storage, ppInternalBlocks[i+1]);
 	}
 
 	if (end_broken == TRUE)
 	{
 		_copy_data(ppInternalBlocks[Length+1], 0, end_cut);
-		DO_READ_VERIFY(&CachePool->Storage, ppInternalBlocks[Length+1]);
+		DO_READ_VERIFY(CachePool, &CachePool->Storage, ppInternalBlocks[Length+1]);
 	}
 
 	ASSERT(Buf - origBuf == origLen);
@@ -291,21 +291,21 @@ BOOLEAN QueryAndWriteToCachePool (
 
 	if (front_broken == TRUE)
 	{
-		DO_READ_VERIFY(&CachePool->Storage, ppInternalBlocks[0]);
+		DO_READ_VERIFY(CachePool, &CachePool->Storage, ppInternalBlocks[0]);
 		_write_data(ppInternalBlocks[0], front_offset, Buf, front_skip);
 		Buf += front_skip;
 	}
 
 	for (i = 0; i < Length; i++)
 	{
-		DO_READ_VERIFY(&CachePool->Storage, ppInternalBlocks[i+1]);
+		DO_READ_VERIFY(CachePool, &CachePool->Storage, ppInternalBlocks[i+1]);
 		_write_data(ppInternalBlocks[i+1], 0, Buf, BLOCK_SIZE);
 		Buf += BLOCK_SIZE;
 	}
 
 	if (end_broken == TRUE)
 	{
-		DO_READ_VERIFY(&CachePool->Storage, ppInternalBlocks[Length+1]);
+		DO_READ_VERIFY(CachePool, &CachePool->Storage, ppInternalBlocks[Length+1]);
 		_write_data(ppInternalBlocks[Length+1], 0, Buf, end_cut);
 		Buf += end_cut;
 	}

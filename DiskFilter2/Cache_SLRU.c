@@ -15,7 +15,7 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 
 	CachePool->Size = CachePool->Used = 0;
 	CachePool->ReadHit = CachePool->WriteHit = 0;
-	CachePool->Size = (CACHE_POOL_SIZE << 20)/(BLOCK_SIZE);
+	CachePool->Size = CACHE_POOL_NUM_BLOCKS;
 	CachePool->ProtectedSize = CachePool->Size / PROTECT_RATIO;
 	CachePool->ProbationarySize = CachePool->Size - CachePool->ProtectedSize;
 
@@ -180,7 +180,6 @@ PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 	else
 	{
 		// There always exist Non-Modified Blocks, When Probationary is Full
-		DbgPrint("%d -.- %d\n", CachePool->ProbationaryList.Size , CachePool->ProbationarySize);
 		ASSERT(CachePool->ProbationaryList.Size < CachePool->ProbationarySize);
 		// Cold List not full
 		pBlock = _AddNewBlockToPool(CachePool, Index, Data, Modified);

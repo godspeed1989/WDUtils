@@ -8,8 +8,12 @@
 #define NSB								1		/* Number Sectors per Block */
 #define BLOCK_SIZE						(SECTOR_SIZE*NSB)
 
-#define WB_QUEUE_SIZE					5		/* MB */
+#define WB_QUEUE_SIZE					2		/* MB */
+#define WB_QUEUE_NUM_BLOCKS				((WB_QUEUE_SIZE << 20)/(BLOCK_SIZE))
 #define WRITE_BACK_ENABLE
+
+#define CACHE_POOL_SIZE					50		/* MB */
+#define CACHE_POOL_NUM_BLOCKS			((CACHE_POOL_SIZE << 20)/(BLOCK_SIZE))
 
 #ifndef USER_APP
 	#include <Ntifs.h>

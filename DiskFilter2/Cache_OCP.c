@@ -14,7 +14,7 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 
 	CachePool->Size = CachePool->Used = 0;
 	CachePool->ReadHit = CachePool->WriteHit = 0;
-	CachePool->Size = (CACHE_POOL_SIZE << 20)/(BLOCK_SIZE);
+	CachePool->Size = CACHE_POOL_NUM_BLOCKS;
 	CachePool->HotSize = CachePool->Size / HOT_RATIO;
 	CachePool->ColdSize = CachePool->Size - CachePool->HotSize;
 

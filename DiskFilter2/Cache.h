@@ -9,8 +9,6 @@
 #define USE_SLRU
 //#define USE_OCP
 
-#define CACHE_POOL_SIZE						50		/* MB */
-
 typedef struct _CACHE_BLOCK
 {
 	BOOLEAN					Modified;
@@ -181,9 +179,9 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 
 /*
     	off
-    +---------+---------+------+--+
+    +----+----+---------+------+--+
     |    | fb |   ...   |  eb  |  |
-    +---------+---------+------+--+
+    +----+----+---------+------+--+
 */
 #define detect_broken(Off,Len,front_broken,end_broken,front_offset,front_skip,end_cut)\
 		do{																		\
@@ -209,17 +207,19 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 		}while(0);
 
 #ifdef READ_VERIFY
-#define DO_READ_VERIFY(Storage,pBlock)											\
+#define DO_READ_VERIFY(CachePool,Storage,pBlock)								\
 		while (g_bDataVerify && pBlock->Modified == FALSE)						\
 		{																		\
 			NTSTATUS Status;													\
 			SIZE_T matched;														\
 			PUCHAR D1, D2;														\
 			LARGE_INTEGER readOffset;											\
+			KIRQL Irql;															\
 			D1 = ExAllocatePoolWithTag(NonPagedPool, BLOCK_SIZE, 'tmpb');		\
 			if (D1 == NULL) break;												\
 			D2 = ExAllocatePoolWithTag(NonPagedPool, BLOCK_SIZE, 'tmpb');		\
 			if (D2 == NULL) { ExFreePoolWithTag(D1, 'tmpb'); break; }			\
+			KeAcquireSpinLock(&CachePool->WbQueueSpinLock, &Irql);				\
 			readOffset.QuadPart = BLOCK_SIZE * pBlock->Index;					\
 			Status = IoDoRWRequestSync (										\
 						IRP_MJ_READ,											\
@@ -228,6 +228,7 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 						BLOCK_SIZE,												\
 						&readOffset												\
 					);															\
+			KeReleaseSpinLock(&CachePool->WbQueueSpinLock, Irql);				\
 			StoragePoolRead(Storage, D2, pBlock->StorageIndex, 0, BLOCK_SIZE);	\
 			if (NT_SUCCESS(Status))												\
 				matched = RtlCompareMemory(D1, D2, BLOCK_SIZE);					\
@@ -241,7 +242,7 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 			break;																\
 		}
 #else
-#define DO_READ_VERIFY(Storage,pBlock)
+#define DO_READ_VERIFY(CachePool,Storage,pBlock)
 #endif
 
 #ifdef WRITE_BACK_ENABLE
