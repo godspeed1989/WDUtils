@@ -122,9 +122,12 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 					#ifdef WRITE_BACK_ENABLE
 						// Flush Back All Data
 						DevExt->CachePool.WbFlushAll = TRUE;
-						KeSetEvent(&DevExt->CachePool.WbThreadStartEvent, IO_NO_INCREMENT, FALSE);
-						KeWaitForSingleObject(&DevExt->CachePool.WbThreadFinishEvent,
-												Executive, KernelMode, FALSE, NULL);
+						while (DevExt->CachePool.WbQueue.Used)	
+						{
+							KeSetEvent(&DevExt->CachePool.WbThreadStartEvent, IO_NO_INCREMENT, FALSE);
+							KeWaitForSingleObject(&DevExt->CachePool.WbThreadFinishEvent,
+													Executive, KernelMode, FALSE, NULL);
+						}
 						DevExt->CachePool.WbFlushAll = FALSE;
 					#endif
 						DestroyCachePool(&DevExt->CachePool);
@@ -353,7 +356,6 @@ NTSTATUS
 DF_DispatchReadWrite(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
 	PDF_DEVICE_EXTENSION DevExt;
-	PAGED_CODE();
 
 	DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 	if (DevExt->bIsProtected == TRUE)

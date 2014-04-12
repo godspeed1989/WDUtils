@@ -23,7 +23,7 @@ BOOLEAN InitCachePool(PCACHE_POOL CachePool
 		);
 	if (ret == FALSE)
 		goto l_error;
-	CachePool->bpt_root = NULL;
+	rb_tree_create(&CachePool->rb_tree, Free_Record);
 	InitList(&CachePool->List);
 	return TRUE;
 l_error:
@@ -33,9 +33,8 @@ l_error:
 
 VOID DestroyCachePool(PCACHE_POOL CachePool)
 {
-	// B+ Tree Destroy
 	DestroyList(&CachePool->List);
-	Destroy_Tree(CachePool->bpt_root);
+	rb_tree_destroy(&CachePool->rb_tree);
 	DestroyStoragePool(&CachePool->Storage);
 }
 
@@ -49,12 +48,14 @@ BOOLEAN _IsFull(PCACHE_POOL CachePool)
  */
 BOOLEAN _QueryPoolByIndex(PCACHE_POOL CachePool, LONGLONG Index, PCACHE_BLOCK *ppBlock)
 {
-	// B+ Tree Find by Index
-	*ppBlock = Find_Record(CachePool->bpt_root, Index);
-	if (NULL == *ppBlock)
+	rb_node_t * node = rb_find(&CachePool->rb_tree, Index);
+	if (NULL == node)
 		return FALSE;
 	else
+	{
+		*ppBlock = (PCACHE_BLOCK)node->client;
 		return TRUE;
+	}
 }
 
 VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
@@ -80,8 +81,7 @@ PCACHE_BLOCK _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Dat
 		);
 		CachePool->Used++;
 		ListInsertToHead(&CachePool->List, pBlock);
-		// Insert into bpt
-		CachePool->bpt_root = Insert(CachePool->bpt_root, Index, pBlock);
+		rb_insert(&CachePool->rb_tree, Index, pBlock);
 	}
 	return pBlock;
 }
@@ -92,11 +92,13 @@ PCACHE_BLOCK _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Dat
 VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 {
 	PCACHE_BLOCK pBlock;
-	if (_QueryPoolByIndex(CachePool, Index, &pBlock) == TRUE)
+	rb_node_t * node = rb_find(&CachePool->rb_tree, Index);
+	if (node)
 	{
+		pBlock = node->client;
 		ListDelete(&CachePool->List, pBlock);
 		StoragePoolFree(&CachePool->Storage, pBlock->StorageIndex);
-		CachePool->bpt_root = Delete(CachePool->bpt_root, Index, TRUE);
+		rb_delete(&CachePool->rb_tree, node, TRUE);
 		CachePool->Used--;
 	}
 }
@@ -117,7 +119,8 @@ PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 
 	if (pBlock)
 	{
-		CachePool->bpt_root = Delete(CachePool->bpt_root, pBlock->Index, FALSE);
+		rb_node_t * node = rb_find(&CachePool->rb_tree, pBlock->Index);
+		rb_delete(&CachePool->rb_tree, node, FALSE);
 		pBlock->Modified = Modified;
 		pBlock->Index = Index;
 		StoragePoolWrite (
@@ -127,7 +130,7 @@ PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 			BLOCK_SIZE
 		);
 		ListMoveToHead(&CachePool->List, pBlock);
-		CachePool->bpt_root = Insert(CachePool->bpt_root, Index, pBlock);
+		rb_insert(&CachePool->rb_tree, Index, pBlock);
 	}
 #ifdef WRITE_BACK_ENABLE
 	else

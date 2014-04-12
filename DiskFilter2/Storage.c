@@ -116,8 +116,8 @@ StoragePoolWrite(PSTORAGE_POOL StoragePool, ULONG StartIndex, ULONG Offset, PVOI
 {
 	LARGE_INTEGER	writeOffset;
 	writeOffset.QuadPart = StartIndex * BLOCK_SIZE + Offset;
-	ASSERT ((writeOffset.QuadPart + Len) <= (StoragePool->TotalSize));
 	writeOffset.QuadPart += BLOCK_RESERVE;
+	ASSERT ((writeOffset.QuadPart + Len) <= (StoragePool->TotalSize));
 #ifdef USE_DRAM
 	RtlCopyMemory(StoragePool->Buffer + writeOffset.QuadPart, Data, Len);
 #else
@@ -136,8 +136,8 @@ StoragePoolRead(PSTORAGE_POOL StoragePool, PVOID Data, ULONG StartIndex, ULONG O
 {
 	LARGE_INTEGER	readOffset;
 	readOffset.QuadPart = StartIndex * BLOCK_SIZE + Offset;
-	ASSERT ((readOffset.QuadPart + Len) <= (StoragePool->TotalSize));
 	readOffset.QuadPart += BLOCK_RESERVE;
+	ASSERT ((readOffset.QuadPart + Len) <= (StoragePool->TotalSize));
 #ifdef USE_DRAM
 	RtlCopyMemory(Data, StoragePool->Buffer + readOffset.QuadPart, Len);
 #else

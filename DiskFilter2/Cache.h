@@ -1,13 +1,14 @@
 #pragma once
 
 #include "bpt.h"
+#include "redblack.h"
 #include "common.h"
 #include "Storage.h"
 
 #define READ_VERIFY
 //#define USE_LRU
-#define USE_SLRU
-//#define USE_OCP
+//#define USE_SLRU
+#define USE_OCP
 
 typedef struct _CACHE_BLOCK
 {
@@ -80,7 +81,7 @@ typedef struct _CACHE_POOL
 #endif
 #if defined(USE_LRU)
 	List			List;
-	node*			bpt_root;
+	rb_tree_t		rb_tree;
 #endif
 #if defined(USE_SLRU)
 	ULONG			ProbationarySize;
@@ -166,6 +167,7 @@ VOID
 		,ULONG PartitionNumber
 	#endif
 	);
+extern void Free_Record ( record * n );
 /**
  * Internal Functions Used by Common Function
  */
@@ -180,7 +182,7 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 /*
     	off
     +----+----+---------+------+--+
-    |    | fb |   ...   |  eb  |  |
+    | fo | fs |   ...   |  ec  |  |
     +----+----+---------+------+--+
 */
 #define detect_broken(Off,Len,front_broken,end_broken,front_offset,front_skip,end_cut)\
@@ -190,10 +192,10 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 			front_offset = 0;													\
 			front_skip = 0;														\
 			end_cut = 0;														\
-			if(Off % BLOCK_SIZE !=0)											\
+			front_offset = Off % BLOCK_SIZE;									\
+			if(front_offset !=0)												\
 			{																	\
 				front_broken = TRUE;											\
-				front_offset = Off % BLOCK_SIZE;								\
 				front_skip = BLOCK_SIZE - front_offset;							\
 				Off += front_skip;												\
 				front_skip = (Len>front_skip) ? front_skip : Len;				\
@@ -203,6 +205,7 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 			{																	\
 				end_broken = TRUE;												\
 				end_cut = Len % BLOCK_SIZE;										\
+				Len = Len - end_cut;											\
 			}																	\
 		}while(0);
 

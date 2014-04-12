@@ -117,7 +117,6 @@ PCACHE_BLOCK _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Dat
 		);
 		CachePool->Used++;
 		ListInsertToHead(&CachePool->ProbationaryList, pBlock);
-		// Insert into bpt
 		CachePool->Probationary_bpt_root = Insert(CachePool->Probationary_bpt_root, Index, pBlock);
 	}
 	return pBlock;

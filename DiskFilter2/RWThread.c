@@ -161,6 +161,30 @@ VOID DF_ReadWriteThread(PVOID Context)
 				}
 				else
 				{
+					PUCHAR origBuf;
+					LONGLONG origOffset;
+					LARGE_INTEGER writeOffset;
+					BOOLEAN front_broken, end_broken;
+					ULONG front_offset, front_skip, end_cut, origLength;
+
+					origBuf = SysBuf;
+					origLength = Length;
+					origOffset = Offset;
+					writeOffset.QuadPart = Offset;
+					detect_broken(Offset, Length, front_broken, end_broken, front_offset, front_skip, end_cut);
+
+					if (front_broken == TRUE)
+					{
+						IoDoRWRequestSync (
+							IRP_MJ_WRITE,
+							DevExt->LowerDeviceObject,
+							SysBuf,
+							front_skip,
+							&writeOffset
+						);
+						SysBuf += front_skip;
+						writeOffset.QuadPart += front_skip;
+					}
 					WriteUpdateCachePool(&DevExt->CachePool,
 										SysBuf, Offset, Length
 									#ifdef READ_VERIFY
@@ -169,8 +193,24 @@ VOID DF_ReadWriteThread(PVOID Context)
 										,DevExt->PartitionNumber
 									#endif
 										);
+					SysBuf += Length;
+					writeOffset.QuadPart += Length;
+					if (end_broken == TRUE)
+					{
+						IoDoRWRequestSync (
+							IRP_MJ_WRITE,
+							DevExt->LowerDeviceObject,
+							SysBuf,
+							end_cut,
+							&writeOffset
+						);
+						SysBuf += end_cut;
+						writeOffset.QuadPart += end_cut;
+					}
+					ASSERT (SysBuf - origBuf == origLength);
+					ASSERT (writeOffset.QuadPart - origOffset == origLength);
 					Irp->IoStatus.Status = STATUS_SUCCESS;
-					Irp->IoStatus.Information = Length;
+					Irp->IoStatus.Information = origLength;
 					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
 					continue;
 				}

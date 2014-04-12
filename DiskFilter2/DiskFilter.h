@@ -30,7 +30,6 @@ VOID
 #pragma alloc_text("INIT",  DriverEntry)
 #pragma alloc_text("PAGED", DF_AddDevice)
 #pragma alloc_text("PAGED", DF_DispatchDefault)
-#pragma alloc_text("PAGED", DF_DispatchReadWrite)
 #pragma alloc_text("PAGED", DF_DispatchPnp)
 #pragma alloc_text("PAGED", DF_DispatchPower)
 #pragma alloc_text("PAGED", DF_DispatchIoctl)
