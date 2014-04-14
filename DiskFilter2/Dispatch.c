@@ -113,12 +113,13 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 					Status = STATUS_SUCCESS;
 					if (Type == FALSE)
 					{
-						DevExt->ReadCount = 0;
-						DevExt->WriteCount = 0;
 						DevExt->bIsProtected = FALSE;
 						// Wait for unfinished Ops in RW Thread
-						KeSetEvent(&DevExt->RwThreadStartEvent, IO_NO_INCREMENT, FALSE);
-						KeWaitForSingleObject(&DevExt->RwThreadFinishEvent, Executive, KernelMode, FALSE, NULL);
+						while (FALSE == IsListEmpty(&DevExt->RwList))
+						{
+							KeSetEvent(&DevExt->RwThreadStartEvent, IO_NO_INCREMENT, FALSE);
+							KeWaitForSingleObject(&DevExt->RwThreadFinishEvent, Executive, KernelMode, FALSE, NULL);
+						}
 					#ifdef WRITE_BACK_ENABLE
 						// Flush Back All Data
 						DevExt->CachePool.WbFlushAll = TRUE;
@@ -130,6 +131,12 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 						}
 						DevExt->CachePool.WbFlushAll = FALSE;
 					#endif
+						DevExt->ReadCount = 0;
+						DevExt->WriteCount = 0;
+						DevExt->CachePool.Size = 0;
+						DevExt->CachePool.Used = 0;
+						DevExt->CachePool.ReadHit = 0;
+						DevExt->CachePool.WriteHit = 0;
 						DestroyCachePool(&DevExt->CachePool);
 					}
 					else if (DevExt->bIsProtected == FALSE)

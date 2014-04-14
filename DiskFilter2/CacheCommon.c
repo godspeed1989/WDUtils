@@ -117,14 +117,27 @@ VOID WriteUpdateCachePool(
 #endif
 )
 {
-	ULONG i;
+	PUCHAR origBuf;
+	ULONG i, front_offset, front_skip, end_cut, origLen;
 	PCACHE_BLOCK pBlock;
+	BOOLEAN front_broken, end_broken;
 
-	ASSERT(Offset % BLOCK_SIZE == 0);
+	origBuf = Buf;
+	origLen = Length;
+
+	detect_broken(Offset, Length, front_broken, end_broken, front_offset, front_skip, end_cut);
 	Offset /= BLOCK_SIZE;
-	ASSERT(Length % BLOCK_SIZE == 0);
 	Length /= BLOCK_SIZE;
 
+	if (front_broken)
+	{
+		if (_QueryPoolByIndex(CachePool, Offset-1, &pBlock) == TRUE)
+		{
+			DO_READ_VERIFY(CachePool, &CachePool->Storage, pBlock);
+			_write_data(pBlock, front_offset, Buf, front_skip);
+		}
+		Buf += front_skip;
+	}
 	for (i = 0; i < Length; i++)
 	{
 		LONGLONG Index = Offset + i;
@@ -145,6 +158,16 @@ VOID WriteUpdateCachePool(
 		}
 		Buf += BLOCK_SIZE;
 	}
+	if (end_broken)
+	{
+		if (_QueryPoolByIndex(CachePool, Offset+Length, &pBlock) == TRUE)
+		{
+			DO_READ_VERIFY(CachePool, &CachePool->Storage, pBlock);
+			_write_data(pBlock, 0, Buf, end_cut);
+		}
+		Buf += end_cut;
+	}
+	ASSERT (Buf - origBuf == origLen);
 }
 
 /**

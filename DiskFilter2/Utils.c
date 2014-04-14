@@ -276,16 +276,22 @@ VOID StopDevice(PDEVICE_OBJECT DeviceObject)
 	if (DevExt->RwThreadObject)
 	{
 		DevExt->bTerminalRwThread = TRUE;
-		KeSetEvent(&DevExt->RwThreadStartEvent, IO_NO_INCREMENT, FALSE);
-		KeWaitForSingleObject(&DevExt->RwThreadFinishEvent, Executive, KernelMode, FALSE, NULL);
+		while (FALSE == IsListEmpty(&DevExt->RwList))
+		{
+			KeSetEvent(&DevExt->RwThreadStartEvent, IO_NO_INCREMENT, FALSE);
+			KeWaitForSingleObject(&DevExt->RwThreadFinishEvent, Executive, KernelMode, FALSE, NULL);
+		}
 		ObDereferenceObject(DevExt->RwThreadObject);
 	}
 #ifdef WRITE_BACK_ENABLE
 	if (DevExt->WbThreadObject)
 	{
 		DevExt->bTerminalWbThread = TRUE;
-		KeSetEvent(&DevExt->CachePool.WbThreadStartEvent, IO_NO_INCREMENT, FALSE);
-		KeWaitForSingleObject(&DevExt->CachePool.WbThreadFinishEvent, Executive, KernelMode, FALSE, NULL);
+		while (DevExt->CachePool.WbQueue.Used)
+		{
+			KeSetEvent(&DevExt->CachePool.WbThreadStartEvent, IO_NO_INCREMENT, FALSE);
+			KeWaitForSingleObject(&DevExt->CachePool.WbThreadFinishEvent, Executive, KernelMode, FALSE, NULL);
+		}
 		ObDereferenceObject(DevExt->WbThreadObject);
 	}
 #endif

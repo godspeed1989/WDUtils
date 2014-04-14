@@ -127,18 +127,16 @@ VOID DF_ReadWriteThread(PVOID Context)
 			// Write Request
 			else
 			{
-			#ifndef WRITE_BACK_ENABLE
-				Irp->IoStatus.Information = 0;
-				Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-				ForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp);
-				if (!NT_SUCCESS(Irp->IoStatus.Status))
-				{
-					Irp->IoStatus.Information = 0;
-					Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-					continue;
-				}
-			#endif
+				PUCHAR origBuf;
+				LONGLONG origOffset;
+				LARGE_INTEGER writeOffset;
+				BOOLEAN front_broken, end_broken;
+				ULONG front_offset, front_skip, end_cut, origLength;
+
+				origBuf = SysBuf;
+				origLength = Length;
+				origOffset = Offset;
+				writeOffset.QuadPart = Offset;
 				// Cache Full Hitted
 				if (QueryAndWriteToCachePool(
 						&DevExt->CachePool,
@@ -154,25 +152,11 @@ VOID DF_ReadWriteThread(PVOID Context)
 				{
 					DBG_PRINT(DBG_TRACE_CACHE, ("whit:%u-%u: off(%I64d) len(%d)\n", DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
 					DevExt->CachePool.WriteHit += Length / BLOCK_SIZE;
-					Irp->IoStatus.Status = STATUS_SUCCESS;
-					Irp->IoStatus.Information = Length;
-					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-					continue;
 				}
 				else
 				{
-					PUCHAR origBuf;
-					LONGLONG origOffset;
-					LARGE_INTEGER writeOffset;
-					BOOLEAN front_broken, end_broken;
-					ULONG front_offset, front_skip, end_cut, origLength;
-
-					origBuf = SysBuf;
-					origLength = Length;
-					origOffset = Offset;
-					writeOffset.QuadPart = Offset;
+				#ifdef WRITE_BACK_ENABLE
 					detect_broken(Offset, Length, front_broken, end_broken, front_offset, front_skip, end_cut);
-
 					if (front_broken == TRUE)
 					{
 						IoDoRWRequestSync (
@@ -185,14 +169,16 @@ VOID DF_ReadWriteThread(PVOID Context)
 						SysBuf += front_skip;
 						writeOffset.QuadPart += front_skip;
 					}
+				#endif
 					WriteUpdateCachePool(&DevExt->CachePool,
-										SysBuf, Offset, Length
+										origBuf, origOffset, origLength
 									#ifdef READ_VERIFY
 										,DevExt->LowerDeviceObject
 										,DevExt->DiskNumber
 										,DevExt->PartitionNumber
 									#endif
 										);
+				#ifdef WRITE_BACK_ENABLE
 					SysBuf += Length;
 					writeOffset.QuadPart += Length;
 					if (end_broken == TRUE)
@@ -209,11 +195,34 @@ VOID DF_ReadWriteThread(PVOID Context)
 					}
 					ASSERT (SysBuf - origBuf == origLength);
 					ASSERT (writeOffset.QuadPart - origOffset == origLength);
+
+					Irp->IoStatus.Status = STATUS_SUCCESS;
+					Irp->IoStatus.Information = origLength;
+					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+					continue;
+				#endif
+				}
+			#ifndef WRITE_BACK_ENABLE
+				Irp->IoStatus.Information = 0;
+				Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+				ForwardIrpSynchronously(DevExt->LowerDeviceObject, Irp);
+				if (!NT_SUCCESS(Irp->IoStatus.Status))
+				{
+					DbgPrint("Write Failed: %I64d %d\n", origOffset, origLength);
+					Irp->IoStatus.Information = 0;
+					Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+					continue;
+				}
+				else
+				{
 					Irp->IoStatus.Status = STATUS_SUCCESS;
 					Irp->IoStatus.Information = origLength;
 					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
 					continue;
 				}
+			#endif
+				continue;
 			}
 		} // while list not empty
 		KeSetEvent(&DevExt->RwThreadFinishEvent, IO_NO_INCREMENT, FALSE);
