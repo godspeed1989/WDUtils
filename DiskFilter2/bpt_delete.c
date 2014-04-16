@@ -115,7 +115,7 @@ node * adjust_root(node * root)
 static
 node * coalesce_nodes(node * root, node * n, node * neighbor, KEY_T neighbor_index, KEY_T k_prime)
 {
-	KEY_T i, j, neighbor_insertion_index, n_start, n_end, new_k_prime;
+	KEY_T i, j, neighbor_insertion_index, n_end;
 	node * tmp;
 	BOOLEAN split;
 
@@ -156,48 +156,25 @@ node * coalesce_nodes(node * root, node * n, node * neighbor, KEY_T neighbor_ind
 	{
 		/* Append k_prime.
 		 */
+
 		neighbor->keys[neighbor_insertion_index] = k_prime;
 		neighbor->num_keys++;
 
-		/* Case (default):  there is room for all of n's keys and pointers
-		 * in the neighbor after appending k_prime.
-		 */
-		n_end = n->num_keys;
 
-		/* Case (special): k cannot fit with all the other keys and pointers
-		 * into one coalesced node.
-		 */
-		n_start = 0; // Only used in this special case.
-		if (n->num_keys + neighbor->num_keys >= order) {
-			split = TRUE;
-			n_end = CUT(order) - 2;
-		}
+		n_end = n->num_keys;
 
 		for (i = neighbor_insertion_index + 1, j = 0; j < n_end; i++, j++) {
 			neighbor->keys[i] = n->keys[j];
 			neighbor->pointers[i] = n->pointers[j];
 			neighbor->num_keys++;
 			n->num_keys--;
-			n_start++;
 		}
 
 		/* The number of pointers is always
 		 * one more than the number of keys.
 		 */
-		neighbor->pointers[i] = n->pointers[j];
 
-		/* If the nodes are still split, remove the first key from
-		 * n.
-		 */
-		if (split == TRUE) {
-			new_k_prime = n->keys[n_start];
-			for (i = 0, j = n_start + 1; i < n->num_keys; i++, j++) {
-				n->keys[i] = n->keys[j];
-				n->pointers[i] = n->pointers[j];
-			}
-			n->pointers[i] = n->pointers[j];
-			n->num_keys--;
-		}
+		neighbor->pointers[i] = n->pointers[j];
 
 		/* All children must now point up to the same parent.
 		 */
@@ -227,12 +204,6 @@ node * coalesce_nodes(node * root, node * n, node * neighbor, KEY_T neighbor_ind
 		root = delete_entry(root, n->parent, k_prime, n);
 		Free_Node(n);
 	}
-	else
-		for (i = 0; i < n->parent->num_keys; i++)
-			if (n->parent->pointers[i + 1] == n) {
-				n->parent->keys[i] = new_k_prime;
-				break;
-			}
 
 	return root;
 }
@@ -297,7 +268,7 @@ node * redistribute_nodes(node * root, node * n, node * neighbor,
 			tmp->parent = n;
 			n->parent->keys[k_prime_index] = neighbor->keys[0];
 		}
-		for (i = 0; i < neighbor->num_keys; i++) {
+		for (i = 0; i < neighbor->num_keys - 1; i++) {
 			neighbor->keys[i] = neighbor->keys[i + 1];
 			neighbor->pointers[i] = neighbor->pointers[i + 1];
 		}

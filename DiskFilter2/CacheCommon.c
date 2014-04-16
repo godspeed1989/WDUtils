@@ -103,7 +103,7 @@ VOID ReadUpdateCachePool(
 		);												\
 		_IncreaseBlockReference(CachePool, pBlock);		\
 		if (pBlock->Modified == FALSE)					\
-			ADD_TO_WBQUEUE(pBlock);
+			ADD_TO_WBQUEUE_NOTSAFE(pBlock);
 /**
  * Write Update Cache Pool with Buffer
  */
@@ -149,12 +149,12 @@ VOID WriteUpdateCachePool(
 		else if (_IsFull(CachePool) == FALSE)
 		{
 			pBlock = _AddNewBlockToPool(CachePool, Index, Buf, TRUE);
-			ADD_TO_WBQUEUE(pBlock);
+			ADD_TO_WBQUEUE_NOTSAFE(pBlock);
 		}
 		else
 		{
 			pBlock = _FindBlockToReplace(CachePool, Index, Buf, TRUE);
-			ADD_TO_WBQUEUE(pBlock);
+			ADD_TO_WBQUEUE_NOTSAFE(pBlock);
 		}
 		Buf += BLOCK_SIZE;
 	}

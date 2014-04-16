@@ -29,7 +29,7 @@ node * Make_Node( void )
 	assert(new_node);
 	// keys: order - 1
 	// bpt_delete!redistribute_nodes: neighbor->keys[i + 1] 
-	new_node->keys = (KEY_T*)BPT_MALLOC( (order - 0) * sizeof(KEY_T) );
+	new_node->keys = (KEY_T*)BPT_MALLOC( (order - 1) * sizeof(KEY_T) );
 	assert(new_node->keys);
 	// pointers: order
 	new_node->pointers = (void*)BPT_MALLOC( order * sizeof(void *) );

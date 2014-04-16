@@ -127,16 +127,10 @@ VOID DF_ReadWriteThread(PVOID Context)
 			// Write Request
 			else
 			{
-				PUCHAR origBuf;
-				LONGLONG origOffset;
-				LARGE_INTEGER writeOffset;
-				BOOLEAN front_broken, end_broken;
-				ULONG front_offset, front_skip, end_cut, origLength;
+				PUCHAR origBuf = SysBuf;
+				ULONG origLength = Length;
+				LONGLONG origOffset = Offset;
 
-				origBuf = SysBuf;
-				origLength = Length;
-				origOffset = Offset;
-				writeOffset.QuadPart = Offset;
 				// Cache Full Hitted
 				if (QueryAndWriteToCachePool(
 						&DevExt->CachePool,
@@ -156,8 +150,17 @@ VOID DF_ReadWriteThread(PVOID Context)
 				else
 				{
 				#ifdef WRITE_BACK_ENABLE
+					LARGE_INTEGER writeOffset;
+					BOOLEAN front_broken, end_broken;
+					ULONG front_offset, front_skip, end_cut;
+					PCACHE_BLOCK pBlock;
+
+					writeOffset.QuadPart = origOffset;
 					detect_broken(Offset, Length, front_broken, end_broken, front_offset, front_skip, end_cut);
-					if (front_broken == TRUE)
+					Offset /= BLOCK_SIZE;
+
+					if (front_broken == TRUE &&
+						_QueryPoolByIndex(&DevExt->CachePool, Offset-1, &pBlock) == FALSE)
 					{
 						IoDoRWRequestSync (
 							IRP_MJ_WRITE,
@@ -166,9 +169,9 @@ VOID DF_ReadWriteThread(PVOID Context)
 							front_skip,
 							&writeOffset
 						);
-						SysBuf += front_skip;
-						writeOffset.QuadPart += front_skip;
 					}
+					SysBuf += front_skip;
+					writeOffset.QuadPart += front_skip;
 				#endif
 					WriteUpdateCachePool(&DevExt->CachePool,
 										origBuf, origOffset, origLength
@@ -181,7 +184,10 @@ VOID DF_ReadWriteThread(PVOID Context)
 				#ifdef WRITE_BACK_ENABLE
 					SysBuf += Length;
 					writeOffset.QuadPart += Length;
-					if (end_broken == TRUE)
+
+					Length /= BLOCK_SIZE;
+					if (end_broken == TRUE &&
+						_QueryPoolByIndex(&DevExt->CachePool, Offset+Length, &pBlock) == FALSE)
 					{
 						IoDoRWRequestSync (
 							IRP_MJ_WRITE,
@@ -190,16 +196,12 @@ VOID DF_ReadWriteThread(PVOID Context)
 							end_cut,
 							&writeOffset
 						);
-						SysBuf += end_cut;
-						writeOffset.QuadPart += end_cut;
 					}
+					SysBuf += end_cut;
+					writeOffset.QuadPart += end_cut;
+
 					ASSERT (SysBuf - origBuf == origLength);
 					ASSERT (writeOffset.QuadPart - origOffset == origLength);
-
-					Irp->IoStatus.Status = STATUS_SUCCESS;
-					Irp->IoStatus.Information = origLength;
-					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-					continue;
 				#endif
 				}
 			#ifndef WRITE_BACK_ENABLE
@@ -214,14 +216,10 @@ VOID DF_ReadWriteThread(PVOID Context)
 					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
 					continue;
 				}
-				else
-				{
-					Irp->IoStatus.Status = STATUS_SUCCESS;
-					Irp->IoStatus.Information = origLength;
-					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-					continue;
-				}
 			#endif
+				Irp->IoStatus.Status = STATUS_SUCCESS;
+				Irp->IoStatus.Information = origLength;
+				IoCompleteRequest(Irp, IO_DISK_INCREMENT);
 				continue;
 			}
 		} // while list not empty

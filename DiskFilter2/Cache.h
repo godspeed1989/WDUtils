@@ -210,13 +210,6 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 		}while(0);
 
 #ifdef READ_VERIFY
-#ifdef WRITE_BACK_ENABLE
-#define LOCK_WB_QUEUE    KeAcquireSpinLock(&CachePool->WbQueueSpinLock, &Irql)
-#define UNLOCK_WB_QUEUE  KeReleaseSpinLock(&CachePool->WbQueueSpinLock, Irql)
-#else
-#define LOCK_WB_QUEUE
-#define UNLOCK_WB_QUEUE
-#endif
 #define DO_READ_VERIFY(CachePool,Storage,pBlock)								\
 		while (g_bDataVerify && pBlock->Modified == FALSE)						\
 		{																		\
@@ -229,7 +222,6 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 			if (D1 == NULL) break;												\
 			D2 = ExAllocatePoolWithTag(NonPagedPool, BLOCK_SIZE, 'tmpb');		\
 			if (D2 == NULL) { ExFreePoolWithTag(D1, 'tmpb'); break; }			\
-			LOCK_WB_QUEUE;														\
 			readOffset.QuadPart = BLOCK_SIZE * pBlock->Index;					\
 			Status = IoDoRWRequestSync (										\
 						IRP_MJ_READ,											\
@@ -238,7 +230,6 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 						BLOCK_SIZE,												\
 						&readOffset												\
 					);															\
-			UNLOCK_WB_QUEUE;													\
 			StoragePoolRead(Storage, D2, pBlock->StorageIndex, 0, BLOCK_SIZE);	\
 			if (NT_SUCCESS(Status))												\
 				matched = RtlCompareMemory(D1, D2, BLOCK_SIZE);					\
@@ -256,7 +247,7 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 #endif
 
 #ifdef WRITE_BACK_ENABLE
-#define ADD_TO_WBQUEUE(pBlock)														\
+#define ADD_TO_WBQUEUE_NOTSAFE(pBlock)												\
 		{																			\
 			KIRQL Irql;																\
 			while (QueueIsFull(&CachePool->WbQueue))								\
@@ -272,8 +263,8 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 			KeSetEvent(&CachePool->WbThreadStartEvent, IO_NO_INCREMENT, FALSE);		\
 		}
 #else
-#define ADD_TO_WBQUEUE(pBlock)													\
-		{																		\
-			pBlock->Modified = TRUE;											\
+#define ADD_TO_WBQUEUE_NOTSAFE(pBlock)												\
+		{																			\
+			pBlock->Modified = TRUE;												\
 		}
 #endif
