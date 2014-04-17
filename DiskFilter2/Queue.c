@@ -8,7 +8,7 @@
 
 BOOLEAN InitQueue (PQueue Queue, ULONG Size)
 {
-	_QZEROMEM(Queue, sizeof(Queue));
+	_QZEROMEM(Queue, sizeof(struct _Queue));
 	Queue->Data = (QUEUE_DAT_T*)_QMALLOC(Size*sizeof(QUEUE_DAT_T));
 	if (Queue->Data == NULL)
 		return FALSE;
@@ -23,7 +23,7 @@ VOID DestroyQueue (PQueue Queue)
 {
 	if (Queue->Data != NULL)
 		_QFREE(Queue->Data);
-	_QZEROMEM(Queue, sizeof(Queue));
+	_QZEROMEM(Queue, sizeof(struct _Queue));
 }
 
 BOOLEAN QueueInsert (PQueue Queue, QUEUE_DAT_T Entry)
