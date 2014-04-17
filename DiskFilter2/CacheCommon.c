@@ -93,26 +93,21 @@ VOID ReadUpdateCachePool(
 	ASSERT(Buf - origBuf == origLen);
 }
 
-#define _write_data(pBlock,off,Buf,len)											\
-	{																			\
-		KIRQL Irql;																\
-		while (QueueIsFull(&CachePool->WbQueue))								\
-		{																		\
-			KeSetEvent(&CachePool->WbThreadStartEvent, IO_NO_INCREMENT, FALSE);	\
-			KeWaitForSingleObject(&CachePool->WbThreadFinishEvent,				\
-									Executive, KernelMode, FALSE, NULL);		\
-		}																		\
-		KeAcquireSpinLock(&CachePool->WbQueueSpinLock, &Irql);					\
-		StoragePoolWrite (														\
-			&CachePool->Storage,												\
-			pBlock->StorageIndex,												\
-			off,																\
-			Buf,																\
-			len																	\
-		);																		\
-		_IncreaseBlockReference(CachePool, pBlock);								\
-		ADD_TO_WBQUEUE_NOT_SAFE(pBlock);										\
-		KeReleaseSpinLock(&CachePool->WbQueueSpinLock, Irql);					\
+#define _write_data(pBlock,off,Buf,len)				\
+	{												\
+		KIRQL Irql;									\
+		EMPTY_WB_QUEUE;								\
+		LOCK_WB_QUEUE;								\
+		StoragePoolWrite (							\
+			&CachePool->Storage,					\
+			pBlock->StorageIndex,					\
+			off,									\
+			Buf,									\
+			len										\
+		);											\
+		_IncreaseBlockReference(CachePool, pBlock);	\
+		ADD_TO_WBQUEUE_NOT_SAFE(pBlock);			\
+		UNLOCK_WB_QUEUE;							\
 	}
 /**
  * Write Update Cache Pool with Buffer

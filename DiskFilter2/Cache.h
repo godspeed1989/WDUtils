@@ -247,34 +247,45 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 #endif
 
 #ifdef WRITE_BACK_ENABLE
-#define ADD_TO_WBQUEUE_SAFE(pBlock)													\
-		{																			\
-			KIRQL Irql;																\
-			while (QueueIsFull(&CachePool->WbQueue))								\
-			{																		\
-				KeSetEvent(&CachePool->WbThreadStartEvent, IO_NO_INCREMENT, FALSE);	\
-				KeWaitForSingleObject(&CachePool->WbThreadFinishEvent,				\
-										Executive, KernelMode, FALSE, NULL);		\
-			}																		\
-			KeAcquireSpinLock(&CachePool->WbQueueSpinLock, &Irql);					\
-			if (pBlock->Modified == FALSE)											\
-			{																		\
-				pBlock->Modified = TRUE;											\
-				ASSERT(TRUE == QueueInsert(&CachePool->WbQueue, pBlock));			\
-			}																		\
-			KeReleaseSpinLock(&CachePool->WbQueueSpinLock, Irql);					\
-		}
-#define ADD_TO_WBQUEUE_NOT_SAFE(pBlock)												\
-		{																			\
-			if (pBlock->Modified == FALSE)											\
-			{																		\
-				pBlock->Modified = TRUE;											\
-				ASSERT(TRUE == QueueInsert(&CachePool->WbQueue, pBlock));			\
-			}																		\
+#define LOCK_WB_QUEUE    KeAcquireSpinLock(&CachePool->WbQueueSpinLock, &Irql)
+#define UNLOCK_WB_QUEUE  KeReleaseSpinLock(&CachePool->WbQueueSpinLock, Irql)
+#define EMPTY_WB_QUEUE															\
+		while (QueueIsFull(&CachePool->WbQueue))								\
+		{																		\
+			KeSetEvent(&CachePool->WbThreadStartEvent, IO_NO_INCREMENT, FALSE);	\
+			KeWaitForSingleObject(&CachePool->WbThreadFinishEvent,				\
+									Executive, KernelMode, FALSE, NULL);		\
 		}
 #else
-#define ADD_TO_WBQUEUE(pBlock)														\
-		{																			\
-			pBlock->Modified = TRUE;												\
+#define LOCK_WB_QUEUE
+#define UNLOCK_WB_QUEUE
+#define EMPTY_WB_QUEUE
+#endif
+
+#ifdef WRITE_BACK_ENABLE
+#define ADD_TO_WBQUEUE_SAFE(pBlock)											\
+		{																	\
+			KIRQL Irql;														\
+			EMPTY_WB_QUEUE;													\
+			LOCK_WB_QUEUE;													\
+			ADD_TO_WBQUEUE_NOT_SAFE(pBlock);								\
+			UNLOCK_WB_QUEUE;												\
+		}
+#define ADD_TO_WBQUEUE_NOT_SAFE(pBlock)										\
+		{																	\
+			if (pBlock->Modified == FALSE)									\
+			{																\
+				pBlock->Modified = TRUE;									\
+				ASSERT(TRUE == QueueInsert(&CachePool->WbQueue, pBlock));	\
+			}																\
+		}
+#else
+#define ADD_TO_WBQUEUE_SAFE(pBlock)											\
+		{																	\
+			pBlock->Modified = TRUE;										\
+		}
+#define ADD_TO_WBQUEUE_NOT_SAFE(pBlock)										\
+		{																	\
+			pBlock->Modified = TRUE;										\
 		}
 #endif
