@@ -247,7 +247,7 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 #endif
 
 #ifdef WRITE_BACK_ENABLE
-#define ADD_TO_WBQUEUE_NOTSAFE(pBlock)												\
+#define ADD_TO_WBQUEUE_SAFE(pBlock)													\
 		{																			\
 			KIRQL Irql;																\
 			while (QueueIsFull(&CachePool->WbQueue))								\
@@ -257,13 +257,23 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 										Executive, KernelMode, FALSE, NULL);		\
 			}																		\
 			KeAcquireSpinLock(&CachePool->WbQueueSpinLock, &Irql);					\
-			pBlock->Modified = TRUE;												\
-			ASSERT(TRUE == QueueInsert(&CachePool->WbQueue, pBlock));				\
+			if (pBlock->Modified == FALSE)											\
+			{																		\
+				pBlock->Modified = TRUE;											\
+				ASSERT(TRUE == QueueInsert(&CachePool->WbQueue, pBlock));			\
+			}																		\
 			KeReleaseSpinLock(&CachePool->WbQueueSpinLock, Irql);					\
-			KeSetEvent(&CachePool->WbThreadStartEvent, IO_NO_INCREMENT, FALSE);		\
+		}
+#define ADD_TO_WBQUEUE_NOT_SAFE(pBlock)												\
+		{																			\
+			if (pBlock->Modified == FALSE)											\
+			{																		\
+				pBlock->Modified = TRUE;											\
+				ASSERT(TRUE == QueueInsert(&CachePool->WbQueue, pBlock));			\
+			}																		\
 		}
 #else
-#define ADD_TO_WBQUEUE_NOTSAFE(pBlock)												\
+#define ADD_TO_WBQUEUE(pBlock)														\
 		{																			\
 			pBlock->Modified = TRUE;												\
 		}

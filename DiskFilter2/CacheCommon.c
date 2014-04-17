@@ -93,17 +93,27 @@ VOID ReadUpdateCachePool(
 	ASSERT(Buf - origBuf == origLen);
 }
 
-#define _write_data(pBlock,off,Buf,len)					\
-		StoragePoolWrite (								\
-			&CachePool->Storage,						\
-			pBlock->StorageIndex,						\
-			off,										\
-			Buf,										\
-			len											\
-		);												\
-		_IncreaseBlockReference(CachePool, pBlock);		\
-		if (pBlock->Modified == FALSE)					\
-			ADD_TO_WBQUEUE_NOTSAFE(pBlock);
+#define _write_data(pBlock,off,Buf,len)											\
+	{																			\
+		KIRQL Irql;																\
+		while (QueueIsFull(&CachePool->WbQueue))								\
+		{																		\
+			KeSetEvent(&CachePool->WbThreadStartEvent, IO_NO_INCREMENT, FALSE);	\
+			KeWaitForSingleObject(&CachePool->WbThreadFinishEvent,				\
+									Executive, KernelMode, FALSE, NULL);		\
+		}																		\
+		KeAcquireSpinLock(&CachePool->WbQueueSpinLock, &Irql);					\
+		StoragePoolWrite (														\
+			&CachePool->Storage,												\
+			pBlock->StorageIndex,												\
+			off,																\
+			Buf,																\
+			len																	\
+		);																		\
+		_IncreaseBlockReference(CachePool, pBlock);								\
+		ADD_TO_WBQUEUE_NOT_SAFE(pBlock);										\
+		KeReleaseSpinLock(&CachePool->WbQueueSpinLock, Irql);					\
+	}
 /**
  * Write Update Cache Pool with Buffer
  */
@@ -148,13 +158,13 @@ VOID WriteUpdateCachePool(
 		}
 		else if (_IsFull(CachePool) == FALSE)
 		{
-			pBlock = _AddNewBlockToPool(CachePool, Index, Buf, TRUE);
-			ADD_TO_WBQUEUE_NOTSAFE(pBlock);
+			pBlock = _AddNewBlockToPool(CachePool, Index, Buf, FALSE);
+			ADD_TO_WBQUEUE_SAFE(pBlock);
 		}
 		else
 		{
-			pBlock = _FindBlockToReplace(CachePool, Index, Buf, TRUE);
-			ADD_TO_WBQUEUE_NOTSAFE(pBlock);
+			pBlock = _FindBlockToReplace(CachePool, Index, Buf, FALSE);
+			ADD_TO_WBQUEUE_SAFE(pBlock);
 		}
 		Buf += BLOCK_SIZE;
 	}
