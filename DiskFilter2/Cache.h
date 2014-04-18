@@ -193,7 +193,7 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 			front_skip = 0;														\
 			end_cut = 0;														\
 			front_offset = Off % BLOCK_SIZE;									\
-			if(front_offset !=0)												\
+			if(front_offset != 0)												\
 			{																	\
 				front_broken = TRUE;											\
 				front_skip = BLOCK_SIZE - front_offset;							\

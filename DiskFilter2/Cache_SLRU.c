@@ -155,7 +155,7 @@ PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 
 	pBlock = CachePool->ProbationaryList.Tail;
 #ifdef WRITE_BACK_ENABLE
-	// Backfoward find first Non-Modified in Probationary List
+	// Backward find first Non-Modified in Probationary List
 	while (pBlock && pBlock->Modified == TRUE)
 		pBlock = pBlock->Prior;
 #endif

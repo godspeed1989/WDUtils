@@ -2,7 +2,7 @@
 ; DiskFilter.inf
 ;
 [Version]
-Signature = "$Windows NT$"
+Signature = "$Chicago$"
 Class = Volume
 ClassGuid = {71a27cdd-812a-11d0-bec7-08002be2092f}
 DriverVer = 02/04/2013, 1.0.0.1

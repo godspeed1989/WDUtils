@@ -112,7 +112,7 @@ PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 
 	pBlock = CachePool->List.Tail;
 #ifdef WRITE_BACK_ENABLE
-	// Backfoward find first Non-Modified
+	// Backward find first Non-Modified
 	while (pBlock && pBlock->Modified == TRUE)
 		pBlock = pBlock->Prior;
 #endif

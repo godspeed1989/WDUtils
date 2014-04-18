@@ -140,7 +140,7 @@ PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 	ULONG i, Count;
 	PCACHE_BLOCK pBlock, ret;
 
-	// Backfoward find first refcnt < 2 in Cold List
+	// Backward find first refcnt < 2 in Cold List
 	while ((pBlock = CachePool->ColdList.Tail) && pBlock->ReferenceCount >= 2)
 	{
 		pBlock->Protected = TRUE;
@@ -175,7 +175,7 @@ PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
 	{
 		pBlock = CachePool->ColdList.Tail;
 	#ifdef WRITE_BACK_ENABLE
-		// Backfoward find first Non-Modified in Cold List
+		// Backward find first Non-Modified in Cold List
 		while (pBlock && pBlock->Modified == TRUE)
 			pBlock = pBlock->Prior;
 		// There always exist Non-Modified Blocks, When cold list is Full
