@@ -32,8 +32,9 @@ DF_DispatchPower(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		DBG_PRINT(DBG_TRACE_OPS, ("SystemPowerState...\n"));
 		if (PowerSystemShutdown == IrpSp->Parameters.Power.State.SystemState)
 		{
-			DBG_PRINT(DBG_TRACE_OPS, ("System is shutting down...\n"));
-			// ... Flush back Cache
+			DBG_PRINT(DBG_TRACE_OPS, ("%d-%d: Stopping Device...\n", DevExt->DiskNumber, DevExt->PartitionNumber));
+			StopDevice(DeviceObject);
+			DBG_PRINT(DBG_TRACE_OPS, ("%d-%d: Device Stopped.\n", DevExt->DiskNumber, DevExt->PartitionNumber));
 		}
 	}
 	else if (IrpSp->Parameters.Power.Type == DevicePowerState)
@@ -348,9 +349,9 @@ DF_DispatchPnp(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		status = Irp->IoStatus.Status;
 		if (NT_SUCCESS(status))
 		{
-			DBG_PRINT(DBG_TRACE_OPS, ("%s: Stoping Device...\n", __FUNCTION__));
+			DBG_PRINT(DBG_TRACE_OPS, ("%d-%d: Stopping Device...\n", DevExt->DiskNumber, DevExt->PartitionNumber));
 			StopDevice(DeviceObject);
-			DBG_PRINT(DBG_TRACE_OPS, ("%s: Device Stopped.\n", __FUNCTION__));
+			DBG_PRINT(DBG_TRACE_OPS, ("%d-%d: Device Stopped.\n", DevExt->DiskNumber, DevExt->PartitionNumber));
 		}
 		IoCompleteRequest(Irp, IO_NO_INCREMENT);
 		return status;

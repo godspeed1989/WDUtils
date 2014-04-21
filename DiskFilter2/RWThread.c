@@ -65,12 +65,12 @@ VOID DF_ReadWriteThread(PVOID Context)
 
 			if (IrpSp->MajorFunction == IRP_MJ_READ)
 			{
-				DevExt->ReadCount += Length / BLOCK_SIZE;
+				DevExt->ReadCount++;
 				DBG_PRINT(DBG_TRACE_RW, ("%u-%u: R off(%I64d) len(%d)\n", DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
 			}
 			else
 			{
-				DevExt->WriteCount += Length / BLOCK_SIZE;
+				DevExt->WriteCount++;
 				DBG_PRINT(DBG_TRACE_RW, ("%u-%u: W off(%I64d) len(%d)\n", DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
 			}
 
@@ -91,7 +91,7 @@ VOID DF_ReadWriteThread(PVOID Context)
 						) == TRUE)
 				{
 					DBG_PRINT(DBG_TRACE_CACHE, ("rhit:%u-%u: off(%I64d) len(%d)\n", DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
-					DevExt->CachePool.ReadHit += Length / BLOCK_SIZE;
+					DevExt->CachePool.ReadHit++;
 					Irp->IoStatus.Status = STATUS_SUCCESS;
 					Irp->IoStatus.Information = Length;
 					IoCompleteRequest(Irp, IO_DISK_INCREMENT);
@@ -145,7 +145,7 @@ VOID DF_ReadWriteThread(PVOID Context)
 						) == TRUE)
 				{
 					DBG_PRINT(DBG_TRACE_CACHE, ("whit:%u-%u: off(%I64d) len(%d)\n", DevExt->DiskNumber, DevExt->PartitionNumber, Offset, Length));
-					DevExt->CachePool.WriteHit += Length / BLOCK_SIZE;
+					DevExt->CachePool.WriteHit++;
 				}
 				else
 				{
