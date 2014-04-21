@@ -74,7 +74,7 @@ typedef struct _CACHE_POOL
 	ULONG32			WriteHit;
 #ifdef WRITE_BACK_ENABLE
 	Queue			WbQueue;
-	KSPIN_LOCK		WbQueueSpinLock;
+	//KSPIN_LOCK		WbQueueSpinLock;
 	BOOLEAN			WbFlushAll;
 	KEVENT			WbThreadStartEvent;
 	KEVENT			WbThreadFinishEvent;
@@ -247,8 +247,10 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 #endif
 
 #ifdef WRITE_BACK_ENABLE
-#define LOCK_WB_QUEUE    KeAcquireSpinLock(&CachePool->WbQueueSpinLock, &Irql)
-#define UNLOCK_WB_QUEUE  KeReleaseSpinLock(&CachePool->WbQueueSpinLock, Irql)
+//#define LOCK_WB_QUEUE    KeAcquireSpinLock(&CachePool->WbQueueSpinLock, &Irql)
+//#define UNLOCK_WB_QUEUE  KeReleaseSpinLock(&CachePool->WbQueueSpinLock, Irql)
+#define LOCK_WB_QUEUE
+#define UNLOCK_WB_QUEUE
 #define EMPTY_WB_QUEUE															\
 		while (QueueIsFull(&CachePool->WbQueue))								\
 		{																		\
