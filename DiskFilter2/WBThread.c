@@ -35,6 +35,7 @@ VOID DF_WriteBackThread(PVOID Context)
 		Offset.QuadPart = -1;
 		Accumulate = 0;
 		LastIndex = -1;
+		spin_lock(&DevExt->CachePool.WbQueueSpinLock);
 		while (NULL != (pBlock = QueueRemove(&DevExt->CachePool.WbQueue)))
 	#if 0
 		{
@@ -94,6 +95,7 @@ VOID DF_WriteBackThread(PVOID Context)
 			);
 		}
 	#endif
+		spin_unlock(&DevExt->CachePool.WbQueueSpinLock);
 		KeSetEvent(&DevExt->CachePool.WbThreadFinishEvent, IO_NO_INCREMENT, FALSE);
 
 		if (DevExt->bTerminalWbThread)
