@@ -1,6 +1,7 @@
 #pragma once
 
 #include "bpt.h"
+#include "Lock.h"
 #include "redblack.h"
 #include "common.h"
 #include "Storage.h"
@@ -74,7 +75,7 @@ typedef struct _CACHE_POOL
 	ULONG32			WriteHit;
 #ifdef WRITE_BACK_ENABLE
 	Queue			WbQueue;
-	//KSPIN_LOCK		WbQueueSpinLock;
+	LONG			WbQueueSpinLock;
 	BOOLEAN			WbFlushAll;
 	KEVENT			WbThreadStartEvent;
 	KEVENT			WbThreadFinishEvent;
@@ -247,10 +248,8 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 #endif
 
 #ifdef WRITE_BACK_ENABLE
-//#define LOCK_WB_QUEUE    KeAcquireSpinLock(&CachePool->WbQueueSpinLock, &Irql)
-//#define UNLOCK_WB_QUEUE  KeReleaseSpinLock(&CachePool->WbQueueSpinLock, Irql)
-#define LOCK_WB_QUEUE
-#define UNLOCK_WB_QUEUE
+#define LOCK_WB_QUEUE    spin_lock(&CachePool->WbQueueSpinLock)
+#define UNLOCK_WB_QUEUE  spin_unlock(&CachePool->WbQueueSpinLock)
 #define EMPTY_WB_QUEUE															\
 		while (QueueIsFull(&CachePool->WbQueue))								\
 		{																		\

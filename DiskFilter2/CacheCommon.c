@@ -82,7 +82,9 @@ VOID ReadUpdateCachePool(
 		}
 		else
 		{
+			LOCK_WB_QUEUE;
 			pBlock = _FindBlockToReplace(CachePool, Index, Buf, FALSE);
+			UNLOCK_WB_QUEUE;
 		}
 		Buf += BLOCK_SIZE;
 	}
@@ -158,8 +160,11 @@ VOID WriteUpdateCachePool(
 		}
 		else
 		{
+			EMPTY_WB_QUEUE;
+			LOCK_WB_QUEUE;
 			pBlock = _FindBlockToReplace(CachePool, Index, Buf, FALSE);
-			ADD_TO_WBQUEUE_SAFE(pBlock);
+			ADD_TO_WBQUEUE_NOT_SAFE(pBlock);
+			UNLOCK_WB_QUEUE;
 		}
 		Buf += BLOCK_SIZE;
 	}

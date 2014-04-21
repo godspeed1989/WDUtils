@@ -32,7 +32,6 @@ VOID DF_WriteBackThread(PVOID Context)
 			continue;
 
 		// Flush Back All Data
-		KeAcquireSpinLock(&DevExt->CachePool.WbQueueSpinLock, &Irql);
 		Offset.QuadPart = -1;
 		Accumulate = 0;
 		LastIndex = -1;
@@ -95,7 +94,6 @@ VOID DF_WriteBackThread(PVOID Context)
 			);
 		}
 	#endif
-		KeReleaseSpinLock(&DevExt->CachePool.WbQueueSpinLock, Irql);
 		KeSetEvent(&DevExt->CachePool.WbThreadFinishEvent, IO_NO_INCREMENT, FALSE);
 
 		if (DevExt->bTerminalWbThread)

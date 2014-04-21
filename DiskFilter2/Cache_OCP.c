@@ -42,6 +42,8 @@ VOID DestroyCachePool(PCACHE_POOL CachePool)
 	// B+ Tree Destroy
 	Destroy_Tree(CachePool->hot_bpt_root);
 	Destroy_Tree(CachePool->cold_bpt_root);
+	CachePool->hot_bpt_root = NULL;
+	CachePool->cold_bpt_root = NULL;
 	DestroyStoragePool(&CachePool->Storage);
 }
 

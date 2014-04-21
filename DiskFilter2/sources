@@ -18,5 +18,6 @@ SOURCES=DiskFilter.c            \
         List.c                  \
         Heap.c                  \
         Queue.c                 \
+        Lock.c                  \
         Storage.c               \
         md5.c

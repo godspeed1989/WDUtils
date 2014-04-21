@@ -248,7 +248,7 @@ VOID StartDevice(PDEVICE_OBJECT DeviceObject)
 	DevExt->bTerminalWbThread = FALSE;
 	DevExt->CachePool.WbFlushAll = FALSE;
 	ZeroMemory(&DevExt->CachePool.WbQueue, sizeof(Queue));
-	KeInitializeSpinLock(&DevExt->CachePool.WbQueueSpinLock);
+	init_spin_lock(&DevExt->CachePool.WbQueueSpinLock);
 	KeInitializeEvent(&DevExt->CachePool.WbThreadStartEvent, SynchronizationEvent, FALSE);
 	KeInitializeEvent(&DevExt->CachePool.WbThreadFinishEvent, SynchronizationEvent, FALSE);
 	if (NT_SUCCESS( DF_CreateSystemThread(DF_WriteBackThread, DevExt,
@@ -267,8 +267,6 @@ VOID StopDevice(PDEVICE_OBJECT DeviceObject)
 	PDF_DEVICE_EXTENSION	DevExt;
 	DevExt = (PDF_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
-	DevExt->bIsStart = FALSE;
-	DevExt->bIsProtected = FALSE;
 	if (DevExt->LowerDeviceObject)
 	{
 		IoDetachDevice(DevExt->LowerDeviceObject);
@@ -295,7 +293,10 @@ VOID StopDevice(PDEVICE_OBJECT DeviceObject)
 		ObDereferenceObject(DevExt->WbThreadObject);
 	}
 #endif
-	DestroyCachePool(&DevExt->CachePool);
+	if (DevExt->bIsProtected == TRUE)
+		DestroyCachePool(&DevExt->CachePool);
+	DevExt->bIsStart = FALSE;
+	DevExt->bIsProtected = FALSE;
 	IoDeleteDevice(DeviceObject);
 }
 

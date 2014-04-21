@@ -43,6 +43,8 @@ VOID DestroyCachePool(PCACHE_POOL CachePool)
 	DestroyList(&CachePool->ProbationaryList);
 	Destroy_Tree(CachePool->Protected_bpt_root);
 	Destroy_Tree(CachePool->Probationary_bpt_root);
+	CachePool->Protected_bpt_root = NULL;
+	CachePool->Probationary_bpt_root = NULL;
 	DestroyStoragePool(&CachePool->Storage);
 }
 
