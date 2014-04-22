@@ -8,7 +8,6 @@ VOID DF_WriteBackThread(PVOID Context)
 {
 	PUCHAR					Data;
 	PDF_DEVICE_EXTENSION	DevExt;
-	KIRQL  					Irql;
 	PCACHE_BLOCK			pBlock;
 	LARGE_INTEGER			Offset;
 	ULONG					Accumulate;
@@ -57,14 +56,19 @@ VOID DF_WriteBackThread(PVOID Context)
 			if (Accumulate == 0)
 			{
 				Offset.QuadPart = pBlock->Index * BLOCK_SIZE;
+				StoragePoolRead(&DevExt->CachePool.Storage,
+								Data + 0,
+								pBlock->StorageIndex, 0, BLOCK_SIZE);
+				Accumulate++;
+				LastIndex = pBlock->Index;
 			}
-			if (Accumulate == 0 || pBlock->Index == LastIndex + 1)
+			else if (pBlock->Index == LastIndex + 1)
 			{
 				StoragePoolRead(&DevExt->CachePool.Storage,
 								Data + Accumulate*BLOCK_SIZE,
 								pBlock->StorageIndex, 0, BLOCK_SIZE);
 				Accumulate++;
-				LastIndex = pBlock->Index;
+				LastIndex++;
 			}
 			else
 			{
@@ -77,7 +81,8 @@ VOID DF_WriteBackThread(PVOID Context)
 				);
 				// Restart
 				StoragePoolRead(&DevExt->CachePool.Storage,
-								Data, pBlock->StorageIndex, 0, BLOCK_SIZE);
+								Data + 0,
+								pBlock->StorageIndex, 0, BLOCK_SIZE);
 				Offset.QuadPart = pBlock->Index * BLOCK_SIZE;
 				Accumulate = 1;
 				LastIndex = pBlock->Index;

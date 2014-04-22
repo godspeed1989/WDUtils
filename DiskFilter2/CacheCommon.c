@@ -97,7 +97,6 @@ VOID ReadUpdateCachePool(
 
 #define _write_data(pBlock,off,Buf,len)				\
 	{												\
-		KIRQL Irql;									\
 		EMPTY_WB_QUEUE;								\
 		LOCK_WB_QUEUE;								\
 		StoragePoolWrite (							\

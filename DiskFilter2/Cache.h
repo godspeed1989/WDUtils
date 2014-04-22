@@ -218,7 +218,6 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 			SIZE_T matched;														\
 			PUCHAR D1, D2;														\
 			LARGE_INTEGER readOffset;											\
-			KIRQL Irql;															\
 			D1 = ExAllocatePoolWithTag(NonPagedPool, BLOCK_SIZE, 'tmpb');		\
 			if (D1 == NULL) break;												\
 			D2 = ExAllocatePoolWithTag(NonPagedPool, BLOCK_SIZE, 'tmpb');		\
@@ -266,7 +265,6 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 #ifdef WRITE_BACK_ENABLE
 #define ADD_TO_WBQUEUE_SAFE(pBlock)											\
 		{																	\
-			KIRQL Irql;														\
 			EMPTY_WB_QUEUE;													\
 			LOCK_WB_QUEUE;													\
 			ADD_TO_WBQUEUE_NOT_SAFE(pBlock);								\
