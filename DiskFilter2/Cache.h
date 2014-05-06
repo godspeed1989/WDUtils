@@ -249,7 +249,7 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 #ifdef WRITE_BACK_ENABLE
 #define LOCK_WB_QUEUE    spin_lock(&CachePool->WbQueueSpinLock)
 #define UNLOCK_WB_QUEUE  spin_unlock(&CachePool->WbQueueSpinLock)
-#define EMPTY_WB_QUEUE															\
+#define EMPTY_WB_QUEUE_IF_FULL													\
 		while (QueueIsFull(&CachePool->WbQueue))								\
 		{																		\
 			KeSetEvent(&CachePool->WbThreadStartEvent, IO_NO_INCREMENT, FALSE);	\
@@ -259,15 +259,19 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 #else
 #define LOCK_WB_QUEUE
 #define UNLOCK_WB_QUEUE
-#define EMPTY_WB_QUEUE
+#define EMPTY_WB_QUEUE_IF_FULL
 #endif
 
 #ifdef WRITE_BACK_ENABLE
 #define ADD_TO_WBQUEUE_SAFE(pBlock)											\
 		{																	\
-			EMPTY_WB_QUEUE;													\
+			EMPTY_WB_QUEUE_IF_FULL;											\
 			LOCK_WB_QUEUE;													\
-			ADD_TO_WBQUEUE_NOT_SAFE(pBlock);								\
+			if (pBlock->Modified == FALSE)									\
+			{																\
+				pBlock->Modified = TRUE;									\
+				QueueInsert(&CachePool->WbQueue, pBlock);					\
+			}																\
 			UNLOCK_WB_QUEUE;												\
 		}
 #define ADD_TO_WBQUEUE_NOT_SAFE(pBlock)										\
@@ -275,7 +279,7 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 			if (pBlock->Modified == FALSE)									\
 			{																\
 				pBlock->Modified = TRUE;									\
-				ASSERT(TRUE == QueueInsert(&CachePool->WbQueue, pBlock));	\
+				QueueInsert(&CachePool->WbQueue, pBlock);					\
 			}																\
 		}
 #else

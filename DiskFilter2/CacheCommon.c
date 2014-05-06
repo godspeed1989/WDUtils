@@ -39,6 +39,17 @@ l_error:
 	return NULL;
 }
 
+#define _read_data(Buf,pBlock,off,len)		\
+	{										\
+		StoragePoolRead (					\
+			&CachePool->Storage,			\
+			Buf,							\
+			pBlock->StorageIndex,			\
+			off,							\
+			len								\
+		);									\
+	}
+
 /**
  * Read Update Cache Pool with Buffer
  */
@@ -66,14 +77,27 @@ VOID ReadUpdateCachePool(
 
 	if(front_broken == TRUE)
 	{
+	#ifdef WRITE_BACK_ENABLE
+		if (_QueryPoolByIndex(CachePool, Offset-1, &pBlock) == TRUE &&
+			pBlock->Modified == TRUE)
+		{
+			_read_data(Buf, pBlock, front_offset, front_skip);
+		}
+	#endif
 		Buf += front_skip;
 	}
 	for (i = 0; i < Length; i++)
 	{
 		LONGLONG Index = Offset + i;
-		if(_QueryPoolByIndex(CachePool, Index, &pBlock) == TRUE)
+		if (_QueryPoolByIndex(CachePool, Index, &pBlock) == TRUE)
 		{
 			DO_READ_VERIFY(CachePool, &CachePool->Storage, pBlock);
+		#ifdef WRITE_BACK_ENABLE
+			if (pBlock->Modified == TRUE)
+			{
+				_read_data(Buf, pBlock, 0, BLOCK_SIZE);
+			}
+		#endif
 			_IncreaseBlockReference(CachePool, pBlock);
 		}
 		else if (_IsFull(CachePool) == FALSE)
@@ -82,14 +106,21 @@ VOID ReadUpdateCachePool(
 		}
 		else
 		{
-			LOCK_WB_QUEUE;
+			//LOCK_WB_QUEUE;
 			pBlock = _FindBlockToReplace(CachePool, Index, Buf, FALSE);
-			UNLOCK_WB_QUEUE;
+			//UNLOCK_WB_QUEUE;
 		}
 		Buf += BLOCK_SIZE;
 	}
 	if (end_broken == TRUE)
 	{
+	#ifdef WRITE_BACK_ENABLE
+		if (_QueryPoolByIndex(CachePool, Offset+Length, &pBlock) == TRUE &&
+			pBlock->Modified == TRUE)
+		{
+			_read_data(Buf, pBlock, 0, end_cut);
+		}
+	#endif
 		Buf += end_cut;
 	}
 	ASSERT(Buf - origBuf == origLen);
@@ -97,7 +128,7 @@ VOID ReadUpdateCachePool(
 
 #define _write_data(pBlock,off,Buf,len)				\
 	{												\
-		EMPTY_WB_QUEUE;								\
+		EMPTY_WB_QUEUE_IF_FULL;						\
 		LOCK_WB_QUEUE;								\
 		StoragePoolWrite (							\
 			&CachePool->Storage,					\
@@ -159,11 +190,12 @@ VOID WriteUpdateCachePool(
 		}
 		else
 		{
-			EMPTY_WB_QUEUE;
-			LOCK_WB_QUEUE;
+			//EMPTY_WB_QUEUE_IF_FULL;
+			//LOCK_WB_QUEUE;
 			pBlock = _FindBlockToReplace(CachePool, Index, Buf, FALSE);
-			ADD_TO_WBQUEUE_NOT_SAFE(pBlock);
-			UNLOCK_WB_QUEUE;
+			//ADD_TO_WBQUEUE_NOT_SAFE(pBlock);
+			ADD_TO_WBQUEUE_SAFE(pBlock);
+			//UNLOCK_WB_QUEUE;
 		}
 		Buf += BLOCK_SIZE;
 	}
