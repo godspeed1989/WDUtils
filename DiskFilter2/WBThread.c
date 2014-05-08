@@ -8,6 +8,7 @@ VOID DF_WriteBackThread(PVOID Context)
 {
 	PUCHAR					Data;
 	PDF_DEVICE_EXTENSION	DevExt;
+	KIRQL  					Irql;
 	PCACHE_BLOCK			pBlock;
 	LARGE_INTEGER			Offset;
 	ULONG					Accumulate;
@@ -34,7 +35,7 @@ VOID DF_WriteBackThread(PVOID Context)
 		Offset.QuadPart = -1;
 		Accumulate = 0;
 		LastIndex = -1;
-		spin_lock(&DevExt->CachePool.WbQueueSpinLock);
+		KeAcquireSpinLock(&DevExt->CachePool.WbQueueSpinLock, &Irql);
 		while (NULL != (pBlock = QueueRemove(&DevExt->CachePool.WbQueue)))
 	#if 0
 		{
@@ -100,7 +101,7 @@ VOID DF_WriteBackThread(PVOID Context)
 			);
 		}
 	#endif
-		spin_unlock(&DevExt->CachePool.WbQueueSpinLock);
+		KeReleaseSpinLock(&DevExt->CachePool.WbQueueSpinLock, Irql);
 		KeSetEvent(&DevExt->CachePool.WbThreadFinishEvent, IO_NO_INCREMENT, FALSE);
 
 		if (DevExt->bTerminalWbThread)

@@ -1,8 +1,6 @@
 #pragma once
 
 #include "bpt.h"
-#include "Lock.h"
-#include "redblack.h"
 #include "common.h"
 #include "Storage.h"
 
@@ -75,14 +73,14 @@ typedef struct _CACHE_POOL
 	ULONG32			WriteHit;
 #ifdef WRITE_BACK_ENABLE
 	Queue			WbQueue;
-	LONG			WbQueueSpinLock;
+	KSPIN_LOCK		WbQueueSpinLock;
 	BOOLEAN			WbFlushAll;
 	KEVENT			WbThreadStartEvent;
 	KEVENT			WbThreadFinishEvent;
 #endif
 #if defined(USE_LRU)
 	List			List;
-	rb_tree_t		rb_tree;
+	node*			bpt_root;
 #endif
 #if defined(USE_SLRU)
 	ULONG			ProbationarySize;
@@ -247,8 +245,8 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 #endif
 
 #ifdef WRITE_BACK_ENABLE
-#define LOCK_WB_QUEUE    spin_lock(&CachePool->WbQueueSpinLock)
-#define UNLOCK_WB_QUEUE  spin_unlock(&CachePool->WbQueueSpinLock)
+#define LOCK_WB_QUEUE    KeAcquireSpinLock(&CachePool->WbQueueSpinLock, &Irql)
+#define UNLOCK_WB_QUEUE  KeReleaseSpinLock(&CachePool->WbQueueSpinLock, Irql)
 #define EMPTY_WB_QUEUE_IF_FULL													\
 		while (QueueIsFull(&CachePool->WbQueue))								\
 		{																		\
@@ -265,13 +263,10 @@ BOOLEAN			_IsFull(PCACHE_POOL CachePool);
 #ifdef WRITE_BACK_ENABLE
 #define ADD_TO_WBQUEUE_SAFE(pBlock)											\
 		{																	\
+			KIRQL Irql;														\
 			EMPTY_WB_QUEUE_IF_FULL;											\
 			LOCK_WB_QUEUE;													\
-			if (pBlock->Modified == FALSE)									\
-			{																\
-				pBlock->Modified = TRUE;									\
-				QueueInsert(&CachePool->WbQueue, pBlock);					\
-			}																\
+			ADD_TO_WBQUEUE_NOT_SAFE(pBlock);								\
 			UNLOCK_WB_QUEUE;												\
 		}
 #define ADD_TO_WBQUEUE_NOT_SAFE(pBlock)										\

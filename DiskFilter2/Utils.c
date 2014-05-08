@@ -248,7 +248,7 @@ VOID StartDevice(PDEVICE_OBJECT DeviceObject)
 	DevExt->bTerminalWbThread = FALSE;
 	DevExt->CachePool.WbFlushAll = FALSE;
 	ZeroMemory(&DevExt->CachePool.WbQueue, sizeof(Queue));
-	init_spin_lock(&DevExt->CachePool.WbQueueSpinLock);
+	KeInitializeSpinLock(&DevExt->CachePool.WbQueueSpinLock);
 	KeInitializeEvent(&DevExt->CachePool.WbThreadStartEvent, SynchronizationEvent, FALSE);
 	KeInitializeEvent(&DevExt->CachePool.WbThreadFinishEvent, SynchronizationEvent, FALSE);
 	if (NT_SUCCESS( DF_CreateSystemThread(DF_WriteBackThread, DevExt,

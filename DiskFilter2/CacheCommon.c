@@ -106,9 +106,7 @@ VOID ReadUpdateCachePool(
 		}
 		else
 		{
-			//LOCK_WB_QUEUE;
 			pBlock = _FindBlockToReplace(CachePool, Index, Buf, FALSE);
-			//UNLOCK_WB_QUEUE;
 		}
 		Buf += BLOCK_SIZE;
 	}
@@ -128,6 +126,7 @@ VOID ReadUpdateCachePool(
 
 #define _write_data(pBlock,off,Buf,len)				\
 	{												\
+		KIRQL Irql;									\
 		EMPTY_WB_QUEUE_IF_FULL;						\
 		LOCK_WB_QUEUE;								\
 		StoragePoolWrite (							\
@@ -190,12 +189,8 @@ VOID WriteUpdateCachePool(
 		}
 		else
 		{
-			//EMPTY_WB_QUEUE_IF_FULL;
-			//LOCK_WB_QUEUE;
 			pBlock = _FindBlockToReplace(CachePool, Index, Buf, FALSE);
-			//ADD_TO_WBQUEUE_NOT_SAFE(pBlock);
 			ADD_TO_WBQUEUE_SAFE(pBlock);
-			//UNLOCK_WB_QUEUE;
 		}
 		Buf += BLOCK_SIZE;
 	}
