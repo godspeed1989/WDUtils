@@ -1,0 +1,20 @@
+TARGETNAME=DiskFilter
+TARGETTYPE=DRIVER
+
+SOURCES=DiskFilter.c            \
+        Dispatch.c              \
+        Utils.c                 \
+        RWThread.c              \
+        WBThread.c              \
+        bpt_delete.c            \
+        bpt_insert.c            \
+        bpt_find.c              \
+        bpt_util.c              \
+        Cache_LRU.c             \
+        Cache_SLRU.c            \
+        Cache_OCP.c             \
+        CacheCommon.c           \
+        List.c                  \
+        Queue.c                 \
+        Storage.c               \
+        md5.c
