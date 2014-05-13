@@ -18,9 +18,6 @@ typedef struct _CACHE_BLOCK
     BOOLEAN                 Modified;
     LONGLONG                Index;
     ULONG                   StorageIndex;
-#if 0
-    ULONG                   HeapIndex;
-#endif
 #if defined(USE_SLRU) || defined(USE_OCP)
     ULONG                   Protected;
 #endif
@@ -29,26 +26,10 @@ typedef struct _CACHE_BLOCK
     struct _CACHE_BLOCK*    Next;
     ULONG                   ReferenceCount;
 #endif
-}CACHE_BLOCK, *PCACHE_BLOCK;
-
-#if 0
-#  define HEAP_VAL_T LONGLONG
-#else
-#  define HEAP_VAL_T LONG
+#ifdef WRITE_BACK_ENABLE
+    LIST_ENTRY              ListEntry;
 #endif
-#define HEAP_DAT_T CACHE_BLOCK
-typedef struct _HeapEntry
-{
-    HEAP_VAL_T      Value;
-    HEAP_DAT_T*     pData;
-}HeapEntry, *PHeapEntry;
-
-typedef struct _Heap
-{
-    ULONG           Size;
-    ULONG           Used;
-    PHeapEntry*     Entries;
-}Heap, *PHeap;
+}CACHE_BLOCK, *PCACHE_BLOCK;
 
 #define LIST_DAT_T CACHE_BLOCK
 typedef struct _List
@@ -58,26 +39,17 @@ typedef struct _List
     LIST_DAT_T*     Tail;
 }List, *PList;
 
-#define QUEUE_DAT_T PCACHE_BLOCK
-typedef struct _Queue
-{
-    ULONG           Size;
-    ULONG           Used;
-    ULONG           Head;
-    ULONG           Tail;
-    QUEUE_DAT_T*    Data;
-}Queue, *PQueue;
-
 typedef struct _CACHE_POOL
 {
     ULONG           Size;
     ULONG           Used;
     STORAGE_POOL    Storage;
+    PVOID           DevExt;
     ULONG32         ReadHit;
     ULONG32         WriteHit;
 #ifdef WRITE_BACK_ENABLE
-    Queue           WbQueue;
-    KSPIN_LOCK      WbQueueSpinLock;
+    LIST_ENTRY      WbList;
+    KSPIN_LOCK      WbQueueLock;
     BOOLEAN         WbFlushAll;
     KEVENT          WbThreadStartEvent;
     KEVENT          WbThreadFinishEvent;
@@ -249,36 +221,45 @@ BOOLEAN         _IsFull(PCACHE_POOL CachePool);
 #endif
 
 #ifdef WRITE_BACK_ENABLE
-#define LOCK_WB_QUEUE    KeAcquireSpinLock(&CachePool->WbQueueSpinLock, &Irql)
-#define UNLOCK_WB_QUEUE  KeReleaseSpinLock(&CachePool->WbQueueSpinLock, Irql)
-#define EMPTY_WB_QUEUE_IF_FULL                                                  \
-        while (QueueIsFull(&CachePool->WbQueue))                                \
-        {                                                                       \
-            KeSetEvent(&CachePool->WbThreadStartEvent, IO_NO_INCREMENT, FALSE); \
-            KeWaitForSingleObject(&CachePool->WbThreadFinishEvent,              \
-                                    Executive, KernelMode, FALSE, NULL);        \
-        }
+#undef DO_READ_VERIFY
+#define DO_READ_VERIFY(CachePool,Storage,pBlock)
+#endif
+
+#ifdef WRITE_BACK_ENABLE
+#if 1
+  #define LOCK_WB_QUEUE(Lock)    KeAcquireSpinLock(Lock, &Irql)
+  #define UNLOCK_WB_QUEUE(Lock)  KeReleaseSpinLock(Lock, Irql)
 #else
-#define LOCK_WB_QUEUE
-#define UNLOCK_WB_QUEUE
-#define EMPTY_WB_QUEUE_IF_FULL
+  #define LOCK_WB_QUEUE(Lock)                     \
+  {                                               \
+      DbgPrint("%s: Lock WB\n", __FUNCTION__);    \
+      KeAcquireSpinLock(Lock, &Irql);             \
+  }
+  #define UNLOCK_WB_QUEUE(Lock)                   \
+  {                                               \
+      DbgPrint("%s: Unlock WB\n", __FUNCTION__);  \
+      KeReleaseSpinLock(Lock, Irql);              \
+  }
+#endif
+#else
+  #define LOCK_WB_QUEUE
+  #define UNLOCK_WB_QUEUE
 #endif
 
 #ifdef WRITE_BACK_ENABLE
 #define ADD_TO_WBQUEUE_SAFE(pBlock)                                         \
         {                                                                   \
             KIRQL Irql;                                                     \
-            EMPTY_WB_QUEUE_IF_FULL;                                         \
-            LOCK_WB_QUEUE;                                                  \
+            LOCK_WB_QUEUE(&CachePool->WbQueueLock);                         \
             ADD_TO_WBQUEUE_NOT_SAFE(pBlock);                                \
-            UNLOCK_WB_QUEUE;                                                \
+            UNLOCK_WB_QUEUE(&CachePool->WbQueueLock);                       \
         }
 #define ADD_TO_WBQUEUE_NOT_SAFE(pBlock)                                     \
         {                                                                   \
             if (pBlock->Modified == FALSE)                                  \
             {                                                               \
                 pBlock->Modified = TRUE;                                    \
-                QueueInsert(&CachePool->WbQueue, pBlock);                   \
+                InsertTailList(&CachePool->WbList, &pBlock->ListEntry);     \
             }                                                               \
         }
 #else

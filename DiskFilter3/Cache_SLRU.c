@@ -1,6 +1,6 @@
 #include "Cache.h"
 #include "List.h"
-#include "Queue.h"
+#include "Utils.h"
 
 #if defined(USE_SLRU)
 
@@ -156,14 +156,18 @@ PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
     PCACHE_BLOCK pBlock;
 
     pBlock = CachePool->ProbationaryList.Tail;
-#ifdef WRITE_BACK_ENABLE
-    // Backward find first Non-Modified in Probationary List
-    while (pBlock && pBlock->Modified == TRUE)
-        pBlock = pBlock->Prior;
-#endif
-
-    if (pBlock)
     {
+    #ifdef WRITE_BACK_ENABLE
+        if (pBlock->Modified == TRUE)
+        {
+            KIRQL   Irql;
+            if (!SyncOneCacheBlock (CachePool, pBlock))
+                DbgPrint("%s: SyncOneCacheBlock Error\n", __FUNCTION__);
+            LOCK_WB_QUEUE(&CachePool->WbQueueLock);
+            pBlock->Modified = FALSE;
+            UNLOCK_WB_QUEUE(&CachePool->WbQueueLock);
+        }
+    #endif
         CachePool->Probationary_bpt_root = Delete(CachePool->Probationary_bpt_root, pBlock->Index, FALSE);
         pBlock->Modified = Modified;
         pBlock->Index = Index;
@@ -177,16 +181,6 @@ PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
         ListMoveToHead(&CachePool->ProbationaryList, pBlock);
         CachePool->Probationary_bpt_root = Insert(CachePool->Probationary_bpt_root, Index, pBlock);
     }
-#ifdef WRITE_BACK_ENABLE
-    else
-    {
-        // There always exist Non-Modified Blocks, When Probationary is Full
-        ASSERT(CachePool->ProbationaryList.Size < CachePool->ProbationarySize);
-        // Cold List not full
-        pBlock = _AddNewBlockToPool(CachePool, Index, Data, Modified);
-        ASSERT(pBlock);
-    }
-#endif
 
     return pBlock;
 }

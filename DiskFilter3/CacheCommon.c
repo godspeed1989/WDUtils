@@ -1,6 +1,6 @@
 #include "Cache.h"
 #include "Utils.h"
-#include "Queue.h"
+#include "List.h"
 
 /**
  * Common Cache Functions
@@ -15,7 +15,7 @@ void Free_Record( record * r )
     ExFreePoolWithTag(p, CACHE_POOL_TAG);
 }
 
- /**
+/**
  * Get a Free Block From Cache Pool
  */
 PCACHE_BLOCK __GetFreeBlock(PCACHE_POOL CachePool)
@@ -124,21 +124,20 @@ VOID ReadUpdateCachePool(
     ASSERT(Buf - origBuf == origLen);
 }
 
-#define _write_data(pBlock,off,Buf,len)             \
-    {                                               \
-        KIRQL Irql;                                 \
-        EMPTY_WB_QUEUE_IF_FULL;                     \
-        LOCK_WB_QUEUE;                              \
-        StoragePoolWrite (                          \
-            &CachePool->Storage,                    \
-            pBlock->StorageIndex,                   \
-            off,                                    \
-            Buf,                                    \
-            len                                     \
-        );                                          \
-        _IncreaseBlockReference(CachePool, pBlock); \
-        ADD_TO_WBQUEUE_NOT_SAFE(pBlock);            \
-        UNLOCK_WB_QUEUE;                            \
+#define _write_data(pBlock,off,Buf,len)                 \
+    {                                                   \
+        KIRQL Irql;                                     \
+        LOCK_WB_QUEUE(&CachePool->WbQueueLock);         \
+        StoragePoolWrite (                              \
+            &CachePool->Storage,                        \
+            pBlock->StorageIndex,                       \
+            off,                                        \
+            Buf,                                        \
+            len                                         \
+        );                                              \
+        _IncreaseBlockReference(CachePool, pBlock);     \
+        ADD_TO_WBQUEUE_NOT_SAFE(pBlock);                \
+        UNLOCK_WB_QUEUE(&CachePool->WbQueueLock);       \
     }
 /**
  * Write Update Cache Pool with Buffer

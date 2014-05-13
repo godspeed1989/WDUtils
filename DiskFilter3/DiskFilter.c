@@ -46,7 +46,7 @@ DriverEntry(PDRIVER_OBJECT DriverObject,
     //
     ClientId = DF_DRIVER_EXTENSION_ID;
     Status = IoAllocateDriverObjectExtension(DriverObject, (PVOID)ClientId,
-        sizeof(DF_DRIVER_EXTENSION), (PVOID*)&DrvExt);
+                                             sizeof(DF_DRIVER_EXTENSION), (PVOID*)&DrvExt);
     ASSERT(NT_SUCCESS(Status));
 
     ClientId = DF_DRIVER_EXTENSION_ID_UNICODE_BUFFER;

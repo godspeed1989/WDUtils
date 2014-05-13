@@ -1,5 +1,6 @@
 #include "Cache.h"
 #include "List.h"
+#include "Utils.h"
 
 #if defined(USE_OCP)
 
@@ -177,13 +178,17 @@ PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
     {
         pBlock = CachePool->ColdList.Tail;
     #ifdef WRITE_BACK_ENABLE
-        // Backward find first Non-Modified in Cold List
-        while (pBlock && pBlock->Modified == TRUE)
-            pBlock = pBlock->Prior;
-        // There always exist Non-Modified Blocks, When cold list is Full
-        ASSERT(pBlock);
+        if (pBlock->Modified == TRUE)
+        {
+            KIRQL   Irql;
+            if (!SyncOneCacheBlock (CachePool, pBlock))
+                DbgPrint("%s: SyncOneCacheBlock Error\n", __FUNCTION__);
+            LOCK_WB_QUEUE(&CachePool->WbQueueLock);
+            pBlock->Modified = FALSE;
+            UNLOCK_WB_QUEUE(&CachePool->WbQueueLock);
+        }
     #endif
-        if (pBlock)
+        // Replace Block's Data
         {
             ListDelete(&CachePool->ColdList, pBlock);
             CachePool->cold_bpt_root = Delete(CachePool->cold_bpt_root, pBlock->Index, FALSE);

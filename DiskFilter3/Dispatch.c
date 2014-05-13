@@ -1,7 +1,6 @@
 #include "DiskFilter.h"
 #include "Utils.h"
 #include "DiskFilterIoctl.h"
-#include "Queue.h"
 
 NTSTATUS DF_CreateRWThread(PDF_DEVICE_EXTENSION DevExt);
 
@@ -124,11 +123,11 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
                     #ifdef WRITE_BACK_ENABLE
                         // Flush Back All Data
                         DevExt->CachePool.WbFlushAll = TRUE;
-                        while (DevExt->CachePool.WbQueue.Used)  
+                        while (FALSE == IsListEmpty(&DevExt->CachePool.WbList))
                         {
                             KeSetEvent(&DevExt->CachePool.WbThreadStartEvent, IO_NO_INCREMENT, FALSE);
                             KeWaitForSingleObject(&DevExt->CachePool.WbThreadFinishEvent,
-                                                    Executive, KernelMode, FALSE, NULL);
+                                                  Executive, KernelMode, FALSE, NULL);
                         }
                         DevExt->CachePool.WbFlushAll = FALSE;
                     #endif
@@ -147,16 +146,10 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
                             ,((ULONG32*)InputBuffer)[2] ,((ULONG32*)InputBuffer)[3]
                         #endif
                             ) == TRUE
-                        #ifdef WRITE_BACK_ENABLE
-                            && InitQueue(&DevExt->CachePool.WbQueue, (WB_QUEUE_SIZE << 20)/(BLOCK_SIZE)) == TRUE
-                        #endif
                         )
                             DevExt->bIsProtected = TRUE;
                         else
                         {
-                        #ifdef WRITE_BACK_ENABLE
-                            DestroyQueue(&DevExt->CachePool.WbQueue);
-                        #endif
                             DestroyCachePool(&DevExt->CachePool);
                             DevExt->bIsProtected = FALSE;
                             KdPrint(("%s: %d-%d: Init Cache Pool Error\n", __FUNCTION__,
@@ -370,8 +363,8 @@ DF_DispatchReadWrite(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     {
         IoMarkIrpPending(Irp);
         // Queue this IRP
-        ExInterlockedInsertTailList(&DevExt->RwList,
-            &Irp->Tail.Overlay.ListEntry, &DevExt->RwListSpinLock);
+        ExInterlockedInsertTailList(&DevExt->RwList, &Irp->Tail.Overlay.ListEntry,
+                                    &DevExt->RwListSpinLock);
         // Set Event
         KeSetEvent(&DevExt->RwThreadStartEvent, IO_NO_INCREMENT, FALSE);
         return STATUS_PENDING;

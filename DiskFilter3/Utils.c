@@ -1,5 +1,6 @@
 #include "Utils.h"
 #include "DiskFilter.h"
+#include "List.h"
 #include "md5.h"
 #include <ntstrsafe.h>
 
@@ -100,38 +101,49 @@ NTSTATUS IoDoRWRequestSync (
         PDEVICE_OBJECT  DeviceObject,
         PVOID           Buffer,
         ULONG           Length,
-        PLARGE_INTEGER  StartingOffset
+        PLARGE_INTEGER  StartingOffset,
+        ULONG           tryTimes
     )
 {
     NTSTATUS        Status = STATUS_SUCCESS;
     PIRP            Irp = NULL;
     IO_STATUS_BLOCK iosb;
     KEVENT          Event;
+    while (1)
+    {
+        Irp = IoBuildAsynchronousFsdRequest (
+            MajorFunction,
+            DeviceObject,
+            Buffer,
+            Length,
+            StartingOffset,
+            &iosb
+        );
+        if (NULL == Irp)
+        {
+            KdPrint(("%s: Build IRP failed!\n", __FUNCTION__));
+            return STATUS_UNSUCCESSFUL;
+        }
 
-    Irp = IoBuildAsynchronousFsdRequest (
-        MajorFunction,
-        DeviceObject,
-        Buffer,
-        Length,
-        StartingOffset,
-        &iosb
-    );
-    if (NULL == Irp)
-    {
-        KdPrint(("%s: Build IRP failed!\n", __FUNCTION__));
-        return STATUS_UNSUCCESSFUL;
-    }
-
-    KeInitializeEvent(&Event, NotificationEvent, FALSE);
-    IoSetCompletionRoutine(Irp, RWRequestCompletion, &Event, TRUE, TRUE, TRUE);
-    if (IoCallDriver(DeviceObject, Irp) == STATUS_PENDING)
-    {
-        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-    }
-    if (!NT_SUCCESS(Irp->IoStatus.Status))
-    {
-        KdPrint(("%s: %x Forward IRP failed!\n", __FUNCTION__, Irp->IoStatus.Status));
-        Status = STATUS_UNSUCCESSFUL;
+        KeInitializeEvent(&Event, NotificationEvent, FALSE);
+        IoSetCompletionRoutine(Irp, RWRequestCompletion, &Event, TRUE, TRUE, TRUE);
+        if (IoCallDriver(DeviceObject, Irp) == STATUS_PENDING)
+        {
+            KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+        }
+        if (!NT_SUCCESS(Irp->IoStatus.Status))
+        {
+            KdPrint(("%s: %x Forward IRP failed! (%I64d,%d)\n",
+                     __FUNCTION__, Irp->IoStatus.Status, StartingOffset->QuadPart, Length));
+            Status = STATUS_UNSUCCESSFUL;
+            if (tryTimes--)
+                KdPrint(("%s: Try Again\n", __FUNCTION__));
+        }
+        else
+        {
+            Status = Irp->IoStatus.Status;
+            break;
+        }
     }
     return Status;
 }
@@ -176,6 +188,31 @@ NTSTATUS IoDoIoctl (
         }
     }
     return STATUS_SUCCESS;
+}
+
+BOOLEAN SyncOneCacheBlock (PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
+{
+    PUCHAR                  Data;
+    LARGE_INTEGER           Offset;
+    NTSTATUS                Status;
+    PDF_DEVICE_EXTENSION    DevExt;
+
+    Data = (PUCHAR)ExAllocatePoolWithTag(NonPagedPool, BLOCK_SIZE, 'tmpb');
+    ASSERT(Data);
+    StoragePoolRead(&CachePool->Storage, Data, pBlock->StorageIndex, 0, BLOCK_SIZE);
+
+    DevExt = (PDF_DEVICE_EXTENSION)CachePool->DevExt;
+    Offset.QuadPart = pBlock->Index * BLOCK_SIZE;
+    Status = IoDoRWRequestSync (
+        IRP_MJ_WRITE,
+        DevExt->LowerDeviceObject,
+        Data,
+        BLOCK_SIZE,
+        &Offset,
+        2
+    );
+    ExFreePoolWithTag(Data, 'tmpb');
+    return NT_SUCCESS(Status);
 }
 
 static NTSTATUS
@@ -247,8 +284,8 @@ VOID StartDevice(PDEVICE_OBJECT DeviceObject)
     DevExt->WbThreadObject = NULL;
     DevExt->bTerminalWbThread = FALSE;
     DevExt->CachePool.WbFlushAll = FALSE;
-    ZeroMemory(&DevExt->CachePool.WbQueue, sizeof(Queue));
-    KeInitializeSpinLock(&DevExt->CachePool.WbQueueSpinLock);
+    InitializeListHead(&DevExt->CachePool.WbList);
+    KeInitializeSpinLock(&DevExt->CachePool.WbQueueLock);
     KeInitializeEvent(&DevExt->CachePool.WbThreadStartEvent, SynchronizationEvent, FALSE);
     KeInitializeEvent(&DevExt->CachePool.WbThreadFinishEvent, SynchronizationEvent, FALSE);
     if (NT_SUCCESS( DF_CreateSystemThread(DF_WriteBackThread, DevExt,
@@ -257,6 +294,7 @@ VOID StartDevice(PDEVICE_OBJECT DeviceObject)
     else
         return;
 #endif
+    DevExt->CachePool.DevExt = DevExt;
     KdPrint(("\n"));
 
     DevExt->bIsStart = TRUE;
@@ -285,10 +323,11 @@ VOID StopDevice(PDEVICE_OBJECT DeviceObject)
     if (DevExt->WbThreadObject)
     {
         DevExt->bTerminalWbThread = TRUE;
-        while (DevExt->CachePool.WbQueue.Used)
+        while (FALSE == IsListEmpty(&DevExt->CachePool.WbList))
         {
             KeSetEvent(&DevExt->CachePool.WbThreadStartEvent, IO_NO_INCREMENT, FALSE);
-            KeWaitForSingleObject(&DevExt->CachePool.WbThreadFinishEvent, Executive, KernelMode, FALSE, NULL);
+            KeWaitForSingleObject(&DevExt->CachePool.WbThreadFinishEvent,
+                                   Executive, KernelMode, FALSE, NULL);
         }
         ObDereferenceObject(DevExt->WbThreadObject);
     }
@@ -362,7 +401,8 @@ NTSTATUS DF_QueryDeviceInfo(PDEVICE_OBJECT DeviceObject)
         DevExt->LowerDeviceObject,
         DBR,
         DBR_LENGTH,
-        &readOffset
+        &readOffset,
+        2
     );
     if (!NT_SUCCESS(Status))
     {

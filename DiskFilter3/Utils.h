@@ -1,5 +1,6 @@
 #pragma once
 #include <Ntifs.h>
+#include "Cache.h"
 
 NTSTATUS ForwardIrpSynchronously (
         PDEVICE_OBJECT  DeviceObject,
@@ -10,7 +11,8 @@ NTSTATUS IoDoRWRequestSync (
         PDEVICE_OBJECT  DeviceObject,
         PVOID           Buffer,
         ULONG           Length,
-        PLARGE_INTEGER  StartingOffset
+        PLARGE_INTEGER  StartingOffset,
+        ULONG           tryTimes
     );
 NTSTATUS IoDoRWRequestAsync (
         ULONG           MajorFunction,
@@ -26,6 +28,10 @@ NTSTATUS IoDoIoctl (
         ULONG           InputBufferLength,
         PVOID           OutputBuffer,
         IN ULONG        OutputBufferLength
+    );
+BOOLEAN SyncOneCacheBlock (
+        PCACHE_POOL CachePool,
+        PCACHE_BLOCK pBlock
     );
 NTSTATUS DF_QueryDeviceInfo (
         PDEVICE_OBJECT DeviceObject

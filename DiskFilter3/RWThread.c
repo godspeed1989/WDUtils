@@ -105,7 +105,7 @@ VOID DF_ReadWriteThread(PVOID Context)
                     if (NT_SUCCESS(Irp->IoStatus.Status))
                     {
                         ReadUpdateCachePool (&DevExt->CachePool,
-                                             SysBuf, Offset, Length
+                                              SysBuf, Offset, Length
                                          #ifdef READ_VERIFY
                                              ,DevExt->LowerDeviceObject
                                              ,DevExt->DiskNumber
@@ -167,19 +167,20 @@ VOID DF_ReadWriteThread(PVOID Context)
                             DevExt->LowerDeviceObject,
                             SysBuf,
                             front_skip,
-                            &writeOffset
+                            &writeOffset,
+                            2
                         );
                     }
                     SysBuf += front_skip;
                     writeOffset.QuadPart += front_skip;
                 #endif
                     WriteUpdateCachePool (&DevExt->CachePool,
-                                         origBuf, origOffset, origLength
-                                     #ifdef READ_VERIFY
-                                         ,DevExt->LowerDeviceObject
-                                         ,DevExt->DiskNumber
-                                         ,DevExt->PartitionNumber
-                                     #endif
+                                           origBuf, origOffset, origLength
+                                      #ifdef READ_VERIFY
+                                          ,DevExt->LowerDeviceObject
+                                          ,DevExt->DiskNumber
+                                          ,DevExt->PartitionNumber
+                                      #endif
                                          );
                 #ifdef WRITE_BACK_ENABLE
                     SysBuf += Length;
@@ -194,7 +195,8 @@ VOID DF_ReadWriteThread(PVOID Context)
                             DevExt->LowerDeviceObject,
                             SysBuf,
                             end_cut,
-                            &writeOffset
+                            &writeOffset,
+                            2
                         );
                     }
                     SysBuf += end_cut;

@@ -5,11 +5,9 @@
 #endif
 
 #define SECTOR_SIZE                     512
-#define NSB                             4       /* Number Sectors per Block */
+#define NSB                             8       /* Number Sectors per Block */
 #define BLOCK_SIZE                      (SECTOR_SIZE*NSB)
 
-#define WB_QUEUE_SIZE                   4       /* MB */
-#define WB_QUEUE_NUM_BLOCKS             ((WB_QUEUE_SIZE << 20)/(BLOCK_SIZE))
 #define WRITE_BACK_ENABLE
 
 #define CACHE_POOL_SIZE                 50      /* MB */
