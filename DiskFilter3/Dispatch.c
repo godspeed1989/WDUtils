@@ -1,6 +1,7 @@
 #include "DiskFilter.h"
 #include "Utils.h"
 #include "DiskFilterIoctl.h"
+#include "Queue.h"
 
 NTSTATUS DF_CreateRWThread(PDF_DEVICE_EXTENSION DevExt);
 
@@ -123,7 +124,7 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
                     #ifdef WRITE_BACK_ENABLE
                         // Flush Back All Data
                         DevExt->CachePool.WbFlushAll = TRUE;
-                        while (FALSE == IsListEmpty(&DevExt->CachePool.WbList))
+                        while (DevExt->CachePool.WbQueue.Used)
                         {
                             KeSetEvent(&DevExt->CachePool.WbThreadStartEvent, IO_NO_INCREMENT, FALSE);
                             KeWaitForSingleObject(&DevExt->CachePool.WbThreadFinishEvent,
@@ -146,10 +147,16 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
                             ,((ULONG32*)InputBuffer)[2] ,((ULONG32*)InputBuffer)[3]
                         #endif
                             ) == TRUE
+                        #ifdef WRITE_BACK_ENABLE
+                            && InitQueue(&DevExt->CachePool.WbQueue, WB_QUEUE_NUM_BLOCKS) == TRUE
+                        #endif
                         )
                             DevExt->bIsProtected = TRUE;
                         else
                         {
+                        #ifdef WRITE_BACK_ENABLE
+                            DestroyQueue(&DevExt->CachePool.WbQueue);
+                        #endif
                             DestroyCachePool(&DevExt->CachePool);
                             DevExt->bIsProtected = FALSE;
                             KdPrint(("%s: %d-%d: Init Cache Pool Error\n", __FUNCTION__,

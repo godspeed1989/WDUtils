@@ -15,5 +15,6 @@ SOURCES=DiskFilter.c            \
         Cache_OCP.c             \
         CacheCommon.c           \
         List.c                  \
+        Queue.c                 \
         Storage.c               \
         md5.c

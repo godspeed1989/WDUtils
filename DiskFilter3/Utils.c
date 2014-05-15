@@ -190,31 +190,6 @@ NTSTATUS IoDoIoctl (
     return STATUS_SUCCESS;
 }
 
-BOOLEAN SyncOneCacheBlock (PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
-{
-    PUCHAR                  Data;
-    LARGE_INTEGER           Offset;
-    NTSTATUS                Status;
-    PDF_DEVICE_EXTENSION    DevExt;
-
-    Data = (PUCHAR)ExAllocatePoolWithTag(NonPagedPool, BLOCK_SIZE, 'tmpb');
-    ASSERT(Data);
-    StoragePoolRead(&CachePool->Storage, Data, pBlock->StorageIndex, 0, BLOCK_SIZE);
-
-    DevExt = (PDF_DEVICE_EXTENSION)CachePool->DevExt;
-    Offset.QuadPart = pBlock->Index * BLOCK_SIZE;
-    Status = IoDoRWRequestSync (
-        IRP_MJ_WRITE,
-        DevExt->LowerDeviceObject,
-        Data,
-        BLOCK_SIZE,
-        &Offset,
-        2
-    );
-    ExFreePoolWithTag(Data, 'tmpb');
-    return NT_SUCCESS(Status);
-}
-
 static NTSTATUS
 DF_CreateSystemThread (
         PKSTART_ROUTINE         StartRoutine,
@@ -284,8 +259,8 @@ VOID StartDevice(PDEVICE_OBJECT DeviceObject)
     DevExt->WbThreadObject = NULL;
     DevExt->bTerminalWbThread = FALSE;
     DevExt->CachePool.WbFlushAll = FALSE;
-    InitializeListHead(&DevExt->CachePool.WbList);
-    KeInitializeSpinLock(&DevExt->CachePool.WbQueueLock);
+    ZeroMemory(&DevExt->CachePool.WbQueue, sizeof(Queue));
+    ExInitializeFastMutex(&DevExt->CachePool.WbQueueLock);
     KeInitializeEvent(&DevExt->CachePool.WbThreadStartEvent, SynchronizationEvent, FALSE);
     KeInitializeEvent(&DevExt->CachePool.WbThreadFinishEvent, SynchronizationEvent, FALSE);
     if (NT_SUCCESS( DF_CreateSystemThread(DF_WriteBackThread, DevExt,
@@ -294,7 +269,6 @@ VOID StartDevice(PDEVICE_OBJECT DeviceObject)
     else
         return;
 #endif
-    DevExt->CachePool.DevExt = DevExt;
     KdPrint(("\n"));
 
     DevExt->bIsStart = TRUE;
@@ -323,7 +297,7 @@ VOID StopDevice(PDEVICE_OBJECT DeviceObject)
     if (DevExt->WbThreadObject)
     {
         DevExt->bTerminalWbThread = TRUE;
-        while (FALSE == IsListEmpty(&DevExt->CachePool.WbList))
+        while (DevExt->CachePool.WbQueue.Used)
         {
             KeSetEvent(&DevExt->CachePool.WbThreadStartEvent, IO_NO_INCREMENT, FALSE);
             KeWaitForSingleObject(&DevExt->CachePool.WbThreadFinishEvent,

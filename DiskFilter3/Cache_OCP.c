@@ -1,6 +1,5 @@
 #include "Cache.h"
 #include "List.h"
-#include "Utils.h"
 
 #if defined(USE_OCP)
 
@@ -88,7 +87,7 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
  */
 PCACHE_BLOCK _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
 {
-    PCACHE_BLOCK pBlock;
+    PCACHE_BLOCK    pBlock;
     if ((pBlock = __GetFreeBlock(CachePool)) != NULL)
     {
         pBlock->Modified = Modified;
@@ -117,7 +116,7 @@ PCACHE_BLOCK _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Dat
  */
 VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 {
-    PCACHE_BLOCK pBlock;
+    PCACHE_BLOCK    pBlock;
     if (_QueryPoolByIndex(CachePool, Index, &pBlock) == TRUE)
     {
         StoragePoolFree(&CachePool->Storage, pBlock->StorageIndex);
@@ -140,8 +139,8 @@ VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
  */
 PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
 {
-    ULONG i, Count;
-    PCACHE_BLOCK pBlock, ret;
+    ULONG           i, Count;
+    PCACHE_BLOCK    pBlock, ret;
 
     // Backward find first refcnt < 2 in Cold List
     while ((pBlock = CachePool->ColdList.Tail) && pBlock->ReferenceCount >= 2)
@@ -178,33 +177,27 @@ PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
     {
         pBlock = CachePool->ColdList.Tail;
     #ifdef WRITE_BACK_ENABLE
-        if (pBlock->Modified == TRUE)
-        {
-            KIRQL   Irql;
-            if (!SyncOneCacheBlock (CachePool, pBlock))
-                DbgPrint("%s: SyncOneCacheBlock Error\n", __FUNCTION__);
-            LOCK_WB_QUEUE(&CachePool->WbQueueLock);
-            pBlock->Modified = FALSE;
-            UNLOCK_WB_QUEUE(&CachePool->WbQueueLock);
-        }
+        // Backward find first Non-Modified in Cold List
+        while (pBlock && pBlock->Modified == TRUE)
+            pBlock = pBlock->Prior;
+        // There always exist Non-Modified Blocks, When cold list is Full
+        ASSERT(pBlock);
     #endif
         // Replace Block's Data
-        {
-            ListDelete(&CachePool->ColdList, pBlock);
-            CachePool->cold_bpt_root = Delete(CachePool->cold_bpt_root, pBlock->Index, FALSE);
-            // Update Data
-            pBlock->Index = Index;
-            pBlock->ReferenceCount = 1;
-            pBlock->Modified = Modified;
-            StoragePoolWrite (
-                &CachePool->Storage,
-                pBlock->StorageIndex, 0,
-                Data,
-                BLOCK_SIZE
-            );
-            ListInsertToHead(&CachePool->ColdList, pBlock);
-            CachePool->cold_bpt_root = Insert(CachePool->cold_bpt_root, pBlock->Index, pBlock);
-        }
+        ListDelete(&CachePool->ColdList, pBlock);
+        CachePool->cold_bpt_root = Delete(CachePool->cold_bpt_root, pBlock->Index, FALSE);
+        // Update Data
+        pBlock->Index = Index;
+        pBlock->ReferenceCount = 1;
+        pBlock->Modified = Modified;
+        StoragePoolWrite (
+            &CachePool->Storage,
+            pBlock->StorageIndex, 0,
+            Data,
+            BLOCK_SIZE
+        );
+        ListInsertToHead(&CachePool->ColdList, pBlock);
+        CachePool->cold_bpt_root = Insert(CachePool->cold_bpt_root, pBlock->Index, pBlock);
     }
 
     return pBlock;

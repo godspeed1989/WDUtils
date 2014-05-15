@@ -222,6 +222,7 @@ VOID DF_ReadWriteThread(PVOID Context)
                 Irp->IoStatus.Status = STATUS_SUCCESS;
                 Irp->IoStatus.Information = origLength;
                 IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+
                 continue;
             }
         } // while list not empty

@@ -1,6 +1,6 @@
 #include "Cache.h"
 #include "List.h"
-#include "Utils.h"
+#include "Queue.h"
 
 #if defined(USE_LRU)
 
@@ -65,7 +65,7 @@ VOID _IncreaseBlockReference(PCACHE_POOL CachePool, PCACHE_BLOCK pBlock)
  */
 PCACHE_BLOCK _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
 {
-    PCACHE_BLOCK pBlock;
+    PCACHE_BLOCK    pBlock;
     if ((pBlock = __GetFreeBlock(CachePool)) != NULL)
     {
         pBlock->Modified = Modified;
@@ -88,7 +88,7 @@ PCACHE_BLOCK _AddNewBlockToPool(PCACHE_POOL CachePool, LONGLONG Index, PVOID Dat
  */
 VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
 {
-    PCACHE_BLOCK pBlock;
+    PCACHE_BLOCK    pBlock;
     if (_QueryPoolByIndex(CachePool, Index, &pBlock) == TRUE)
     {
         ListDelete(&CachePool->List, pBlock);
@@ -103,21 +103,17 @@ VOID _DeleteOneBlockFromPool(PCACHE_POOL CachePool, LONGLONG Index)
  */
 PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Data, BOOLEAN Modified)
 {
-    PCACHE_BLOCK pBlock;
+    PCACHE_BLOCK    pBlock;
 
     pBlock = CachePool->List.Tail;
+#ifdef WRITE_BACK_ENABLE
+    // Backward find first Non-Modified
+    while (pBlock && pBlock->Modified == TRUE)
+        pBlock = pBlock->Prior;
+#endif
+
+    if (pBlock)
     {
-    #ifdef WRITE_BACK_ENABLE
-        if (pBlock->Modified == TRUE)
-        {
-            KIRQL   Irql;
-            if (!SyncOneCacheBlock (CachePool, pBlock))
-                DbgPrint("%s: SyncOneCacheBlock Error\n", __FUNCTION__);
-            LOCK_WB_QUEUE(&CachePool->WbQueueLock);
-            pBlock->Modified = FALSE;
-            UNLOCK_WB_QUEUE(&CachePool->WbQueueLock);
-        }
-    #endif
         CachePool->bpt_root = Delete(CachePool->bpt_root, pBlock->Index, FALSE);
         pBlock->Modified = Modified;
         pBlock->Index = Index;
@@ -128,8 +124,18 @@ PCACHE_BLOCK _FindBlockToReplace(PCACHE_POOL CachePool, LONGLONG Index, PVOID Da
             BLOCK_SIZE
         );
         ListMoveToHead(&CachePool->List, pBlock);
-        CachePool->bpt_root = Insert(CachePool->bpt_root, Index, pBlock);        
+        CachePool->bpt_root = Insert(CachePool->bpt_root, Index, pBlock);
     }
+#ifdef WRITE_BACK_ENABLE
+    else
+    {
+        // There always exist Non-Modified Blocks, When cold list is Full
+        ASSERT(CachePool->List.Size < CachePool->Size);
+        // Pool not full
+        pBlock = _AddNewBlockToPool(CachePool, Index, Data, Modified);
+        ASSERT(pBlock);
+    }
+#endif
 
     return pBlock;
 }

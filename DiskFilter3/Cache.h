@@ -26,53 +26,61 @@ typedef struct _CACHE_BLOCK
     struct _CACHE_BLOCK*    Next;
     ULONG                   ReferenceCount;
 #endif
-#ifdef WRITE_BACK_ENABLE
-    LIST_ENTRY              ListEntry;
-#endif
 }CACHE_BLOCK, *PCACHE_BLOCK;
 
 #define LIST_DAT_T CACHE_BLOCK
 typedef struct _List
 {
-    ULONG           Size;
-    LIST_DAT_T*     Head;
-    LIST_DAT_T*     Tail;
+    ULONG                   Size;
+    LIST_DAT_T*             Head;
+    LIST_DAT_T*             Tail;
 }List, *PList;
+
+#define QUEUE_DAT_T PCACHE_BLOCK
+typedef struct _Queue
+{
+    ULONG                   Size;
+    ULONG                   Used;
+    ULONG                   Head;
+    ULONG                   Tail;
+    QUEUE_DAT_T*            Data;
+}Queue, *PQueue;
 
 typedef struct _CACHE_POOL
 {
-    ULONG           Size;
-    ULONG           Used;
-    STORAGE_POOL    Storage;
-    PVOID           DevExt;
-    ULONG32         ReadHit;
-    ULONG32         WriteHit;
+    ULONG                   Size;
+    ULONG                   Used;
+    STORAGE_POOL            Storage;
+    ULONG32                 ReadHit;
+    ULONG32                 WriteHit;
 #ifdef WRITE_BACK_ENABLE
-    LIST_ENTRY      WbList;
-    KSPIN_LOCK      WbQueueLock;
-    BOOLEAN         WbFlushAll;
-    KEVENT          WbThreadStartEvent;
-    KEVENT          WbThreadFinishEvent;
+    Queue           WbQueue;
+    FAST_MUTEX              WbQueueLock;
+    BOOLEAN                 WbFlushAll;
+    KEVENT                  WbThreadStartEvent;
+    KEVENT                  WbThreadFinishEvent;
+#else
+    ULONG                   WbQueueLock; // stub
 #endif
 #if defined(USE_LRU)
-    List            List;
-    node*           bpt_root;
+    List                    List;
+    node*                   bpt_root;
 #endif
 #if defined(USE_SLRU)
-    ULONG           ProbationarySize;
-    List            ProbationaryList;
-    node*           Probationary_bpt_root;
-    ULONG           ProtectedSize;
-    List            ProtectedList;
-    node*           Protected_bpt_root;
+    ULONG                   ProbationarySize;
+    List                    ProbationaryList;
+    node*                   Probationary_bpt_root;
+    ULONG                   ProtectedSize;
+    List                    ProtectedList;
+    node*                   Protected_bpt_root;
 #endif
 #if defined(USE_OCP)
-    List            HotList;
-    ULONG           HotSize;
-    node*           hot_bpt_root;
-    List            ColdList;
-    ULONG           ColdSize;
-    node*           cold_bpt_root;
+    List                    HotList;
+    ULONG                   HotSize;
+    node*                   hot_bpt_root;
+    List                    ColdList;
+    ULONG                   ColdSize;
+    node*                   cold_bpt_root;
 #endif
 }CACHE_POOL, *PCACHE_POOL;
 
@@ -202,7 +210,8 @@ BOOLEAN         _IsFull(PCACHE_POOL CachePool);
                         LowerDeviceObject,                                      \
                         D1,                                                     \
                         BLOCK_SIZE,                                             \
-                        &readOffset                                             \
+                        &readOffset,                                            \
+                        2                                                       \
                     );                                                          \
             StoragePoolRead(Storage, D2, pBlock->StorageIndex, 0, BLOCK_SIZE);  \
             if (NT_SUCCESS(Status))                                             \
@@ -226,30 +235,40 @@ BOOLEAN         _IsFull(PCACHE_POOL CachePool);
 #endif
 
 #ifdef WRITE_BACK_ENABLE
-#if 1
-  #define LOCK_WB_QUEUE(Lock)    KeAcquireSpinLock(Lock, &Irql)
-  #define UNLOCK_WB_QUEUE(Lock)  KeReleaseSpinLock(Lock, Irql)
-#else
+  #define __LOCK_WB_QUEUE(Lock)     ExAcquireFastMutex(Lock)
+  #define __UNLOCK_WB_QUEUE(Lock)   ExReleaseFastMutex(Lock)
+ #if 1
+  #define LOCK_WB_QUEUE(Lock)       __LOCK_WB_QUEUE(Lock)
+  #define UNLOCK_WB_QUEUE(Lock)     __UNLOCK_WB_QUEUE(Lock)
+ #else
   #define LOCK_WB_QUEUE(Lock)                     \
   {                                               \
       DbgPrint("%s: Lock WB\n", __FUNCTION__);    \
-      KeAcquireSpinLock(Lock, &Irql);             \
+      __LOCK_WB_QUEUE(Lock);                      \
   }
   #define UNLOCK_WB_QUEUE(Lock)                   \
   {                                               \
       DbgPrint("%s: Unlock WB\n", __FUNCTION__);  \
-      KeReleaseSpinLock(Lock, Irql);              \
+      __UNLOCK_WB_QUEUE(Lock);                    \
   }
-#endif
+ #endif
+ #define EMPTY_WB_QUEUE_IF_FULL                                           \
+  while (QueueIsFull(&CachePool->WbQueue))                                \
+  {                                                                       \
+      KeSetEvent(&CachePool->WbThreadStartEvent, IO_NO_INCREMENT, FALSE); \
+      KeWaitForSingleObject(&CachePool->WbThreadFinishEvent,              \
+                             Executive, KernelMode, FALSE, NULL);         \
+  }
 #else
-  #define LOCK_WB_QUEUE
-  #define UNLOCK_WB_QUEUE
+  #define LOCK_WB_QUEUE(Lock)
+  #define UNLOCK_WB_QUEUE(Lock)
+  #define EMPTY_WB_QUEUE_IF_FULL
 #endif
 
 #ifdef WRITE_BACK_ENABLE
 #define ADD_TO_WBQUEUE_SAFE(pBlock)                                         \
         {                                                                   \
-            KIRQL Irql;                                                     \
+            EMPTY_WB_QUEUE_IF_FULL;                                         \
             LOCK_WB_QUEUE(&CachePool->WbQueueLock);                         \
             ADD_TO_WBQUEUE_NOT_SAFE(pBlock);                                \
             UNLOCK_WB_QUEUE(&CachePool->WbQueueLock);                       \
@@ -259,7 +278,7 @@ BOOLEAN         _IsFull(PCACHE_POOL CachePool);
             if (pBlock->Modified == FALSE)                                  \
             {                                                               \
                 pBlock->Modified = TRUE;                                    \
-                InsertTailList(&CachePool->WbList, &pBlock->ListEntry);     \
+                QueueInsert(&CachePool->WbQueue, pBlock);                   \
             }                                                               \
         }
 #else

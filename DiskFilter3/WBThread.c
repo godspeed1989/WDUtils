@@ -1,26 +1,23 @@
 #include "DiskFilter.h"
 #include "Utils.h"
-#include "List.h"
+#include "Queue.h"
 
 #ifdef WRITE_BACK_ENABLE
 
 #define MERGE_CONSECUTIVE
-#define CONSECUTIVE_BUF_SIZE    4   /* MB */
+#define CONSECUTIVE_BUF_SIZE    4    /* MB */
 #define NUM_CONSECUTIVE_BLOCK   ((CONSECUTIVE_BUF_SIZE << 20) / BLOCK_SIZE)
-#define WB_INTERVAL             2   /* Seconds */
 
-#define _DEBUG
+//#define _DEBUG
 
 VOID DF_WriteBackThread(PVOID Context)
 {
     PUCHAR                  Data;
     PDF_DEVICE_EXTENSION    DevExt;
-    KIRQL                   Irql;
     PCACHE_BLOCK            pBlock;
     LARGE_INTEGER           Offset;
     ULONG                   Accumulate;
     LONGLONG                LastIndex;
-    PLIST_ENTRY             ReqEntry;
 
     DevExt = (PDF_DEVICE_EXTENSION)Context;
     Data = (PUCHAR)ExAllocatePoolWithTag(NonPagedPool, CONSECUTIVE_BUF_SIZE << 20, 'tmpb');
@@ -30,45 +27,26 @@ VOID DF_WriteBackThread(PVOID Context)
     KdPrint(("%u-%u: Write Back Thread Start...\n", DevExt->DiskNumber, DevExt->PartitionNumber));
     for (;;)
     {
-        ULONG           i;
-        KTIMER	        timer;
-        LARGE_INTEGER   timeout;
-        PVOID           Object[2] = {&timer, &DevExt->CachePool.WbThreadStartEvent};
-    #define s2us(_s_) (_s_*1000*1000)
-        timeout.QuadPart = s2us(WB_INTERVAL) * -10;
-        KeInitializeTimerEx(&timer, NotificationTimer);
-        KeSetTimer(&timer, timeout, NULL);
-        KeWaitForMultipleObjects(2, Object, WaitAny, Executive, KernelMode, FALSE, NULL, NULL);
-        KeCancelTimer(&timer);
+        KeWaitForSingleObject(&DevExt->CachePool.WbThreadStartEvent,
+                               Executive, KernelMode, FALSE, NULL);
 
         // Write Back Strategy
-        if (IsListEmpty(&DevExt->CachePool.WbList))
+        if (DevExt->bTerminalWbThread == FALSE &&
+            DevExt->CachePool.WbFlushAll == FALSE &&
+            DevExt->CachePool.WbQueue.Used < DevExt->CachePool.WbQueue.Size)
             continue;
-        for (i = 0; i < 3; i++)
-        {
-            if (DevExt->CachePool.WbQueueLock == 0)
-            {
-                LOCK_WB_QUEUE(&DevExt->CachePool.WbQueueLock);
-                break;
-            }
-        }
-        if (i == 3)
-            continue;
+
     #ifdef _DEBUG
         DbgPrint("%s: Flush Start\n", __FUNCTION__);
     #endif
-        i = 0;
-        // Flush Back Data
+        // Flush Back All Data
         Offset.QuadPart = -1;
         Accumulate = 0;
         LastIndex = -1;
-        while (!IsListEmpty(&DevExt->CachePool.WbList))
+        LOCK_WB_QUEUE(&DevExt->CachePool.WbQueueLock);
+        while (NULL != (pBlock = QueueRemove(&DevExt->CachePool.WbQueue)))
+    #ifndef MERGE_CONSECUTIVE
         {
-            ReqEntry = RemoveHeadList(&DevExt->CachePool.WbList);
-            pBlock = CONTAINING_RECORD(ReqEntry, CACHE_BLOCK, ListEntry);
-            if (pBlock->Modified == FALSE)
-                continue;
-        #ifndef MERGE_CONSECUTIVE
             Offset.QuadPart = pBlock->Index * BLOCK_SIZE;
             StoragePoolRead(&DevExt->CachePool.Storage,
                              Data + 0,
@@ -82,7 +60,10 @@ VOID DF_WriteBackThread(PVOID Context)
                 2
             );
             pBlock->Modified = FALSE;
-        #else // Merge Consecutive Writes
+        }
+    #else
+        // Merge Consecutive Writes
+        {
             if (Accumulate == 0)
             {
                 Offset.QuadPart = pBlock->Index * BLOCK_SIZE;
@@ -119,10 +100,7 @@ VOID DF_WriteBackThread(PVOID Context)
                 LastIndex = pBlock->Index;
             }
             pBlock->Modified = FALSE;
-        #endif
-            i++;
         }
-    #ifdef MERGE_CONSECUTIVE
         if (Accumulate)
         {
             IoDoRWRequestSync (
@@ -138,7 +116,7 @@ VOID DF_WriteBackThread(PVOID Context)
         UNLOCK_WB_QUEUE(&DevExt->CachePool.WbQueueLock);
         KeSetEvent(&DevExt->CachePool.WbThreadFinishEvent, IO_NO_INCREMENT, FALSE);
     #ifdef _DEBUG
-        DbgPrint("%s: Flush %d Finished\n", __FUNCTION__, i);
+        DbgPrint("%s: Flush Finished\n", __FUNCTION__);
     #endif
         if (DevExt->bTerminalWbThread)
         {

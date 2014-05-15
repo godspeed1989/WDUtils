@@ -1,6 +1,6 @@
 #include "Cache.h"
 #include "Utils.h"
-#include "List.h"
+#include "Queue.h"
 
 /**
  * Common Cache Functions
@@ -126,7 +126,7 @@ VOID ReadUpdateCachePool(
 
 #define _write_data(pBlock,off,Buf,len)                 \
     {                                                   \
-        KIRQL Irql;                                     \
+        EMPTY_WB_QUEUE_IF_FULL;                         \
         LOCK_WB_QUEUE(&CachePool->WbQueueLock);         \
         StoragePoolWrite (                              \
             &CachePool->Storage,                        \
