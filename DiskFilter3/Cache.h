@@ -54,7 +54,7 @@ typedef struct _CACHE_POOL
     ULONG32                 ReadHit;
     ULONG32                 WriteHit;
 #ifdef WRITE_BACK_ENABLE
-    Queue           WbQueue;
+    Queue                   WbQueue;
     FAST_MUTEX              WbQueueLock;
     BOOLEAN                 WbFlushAll;
     KEVENT                  WbThreadStartEvent;
