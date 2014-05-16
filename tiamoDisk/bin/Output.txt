@@ -1,0 +1,30 @@
+
+tiamobus.sys*******DriverEntry called	
+tiamobus.sys*******AddDevice called,fdo createed.	
+tiamobus.sys*******IRP_MJ_PNP...............
+tiamobus.sys*******IRP_MJ_CREATE for bus fdo device 	
+tiamobus.sys*******IOCTL_TIAMO_BUS_PLUGIN detected new device and created a pdo.	
+tiamobus.sys*******IRP_MJ_CLOSE for bus fdo device 	
+tiamobus.sys*******IRP_MJ_PNP...............
+
+tiamominiport*******DriverEntry...create system thread	
+tiamominiport*******DriverEntry...call ScsiPortInitialize	
+tiamominiport*******DriverEntry..setup driver unload function pointer	
+
+tiamominiport*******MiniportFindAdapter...found an adapter	
+tiamominiport*******MiniportInitialize...just set mount event,and wait for 5 seconds to let work thread do all the thing.	
+
+tiamobus.sys*******IRP_MJ_CREATE for bus fdo device 	
+tiamobus.sys*******IRP_MJ_CLOSE for bus fdo device 	
+tiamobus.sys*******IOCTL_TIAMO_BUS_MINIPORT_GET_CONFIG upper miniport fdo get it's pdo configuration	
+
+tiamominiport*******MiniportInitialize...work thread finished successfully,then set timer,and return true.	
+tiamominiport*******MiniportAdapterControl...ScsiQuerySupportedControlTypes(stop,restart,query)	
+tiamobus.sys*******IRP_MJ_PNP...............
+tiamominiport*******ScsiCmd...............
+
+tiamominiport*******DriverUnload...call ScsiportUnload.	
+tiamominiport*******DriverUnload...set shut down event	
+tiamominiport*******DriverUnload...wait for the work thread terminate.	
+tiamominiport*******MiniportRequestProcessorWorker...terminate worker thread	
+tiamominiport*******DriverUnload...the work thread terminated.then driver image can be safe unload.	

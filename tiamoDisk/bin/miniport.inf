@@ -1,0 +1,69 @@
+[Version]
+signature="$WINDOWS NT$"
+Class=SCSIAdapter
+ClassGUID={4D36E97B-E325-11CE-BFC1-08002BE10318}
+Provider=%TIAMO%
+DriverVer=07/07/2004, 1.00.0000
+
+[ClassInstall]
+Addreg=SCSIReg
+
+[SCSIReg]
+HKR,,,,"SCSI controllers"
+HKR,,EnumPropPages,,"iosclass.dll,SCSIEnumPropPages"
+HKR,,Icon,,-10
+
+[ClassInstall32.NT]
+Addreg=SCSIRegNT
+
+[SCSIRegNT]
+HKR,,,,"SCSI and RAID controllers"
+HKR,,Installer32,,"SysSetup.Dll,ScsiClassInstaller"
+HKR,,Icon,,"-10"
+HKR,,LegacyInfOption,,"SCSI"
+HKR,,DeviceType,0x10001,4
+HKR,,DeviceCharacteristics,0x10001,0x100
+
+[Manufacturer]
+%StdMfg%=Standard
+
+[Standard]
+%TiamoMiniPort.DeviceDesc%   = tiamoMiniport, *tiamoport,GEN_SCSIADAPTER
+
+[tiamoMiniport.NT]
+CopyFiles=Drivers_Dir
+
+[Drivers_Dir]
+tiamominiport.sys
+
+[TiamoMiniport.NT.Services]
+AddService = tiamoport, %SPSVCINST_ASSOCSERVICE%, tiamoMiniport_Service_Inst
+
+[tiamoMiniport_Service_Inst]
+DisplayName    = %tiamoMiniport.SVCDESC%
+ServiceType    = 1
+StartType      = 0
+ErrorControl   = 1
+ServiceBinary  = %12%\tiamominiport.sys
+LoadOrderGroup = SCSI Miniport
+AddReg         = INST_pnp
+
+[INST_pnp]
+HKR, "Parameters\PnpInterface", "0", 0x00010001, 0x00000001
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles]
+tiamominiport.sys  = 1,,
+
+[Strings]
+SPSVCINST_ASSOCSERVICE= 0x00000002
+TIAMO="tiamo"
+StdMfg="tiamo Virtual Device SCSI Controller"
+TiamoMiniPort.DeviceDesc ="tiamoport SCSI Controller"
+DiskId1 = "tiamoMiniport Installation Disk #1"
+tiamoMiniport.SVCDESC = "tiamo Miniport"

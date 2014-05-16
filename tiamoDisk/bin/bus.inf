@@ -1,0 +1,52 @@
+[Version]
+Signature="$WINDOWS NT$"
+Class=System
+ClassGuid={4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider=%TIAMO%
+DriverVer=07/07/2004, 1.00.0000
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles]
+tiamobus.sys  = 1,,
+
+[Manufacturer]
+%StdMfg%=Standard
+
+[Standard]
+%TiamoBus.DeviceDesc%=TiamoBus_Device, root\tiamobus
+
+[TiamoBus_Device.NT]
+CopyFiles=Drivers_Dir
+
+[TiamoBus_Device.NT.HW]
+AddReg=TiamoBus_Device.NT.AddReg
+
+[TiamoBus_Device.NT.AddReg]                            
+
+[Drivers_Dir]
+tiamobus.sys
+
+[TiamoBus_Device.NT.Services]
+AddService = tiamobus,%SPSVCINST_ASSOCSERVICE%, tiamobus_Service_Inst
+
+[tiamobus_Service_Inst]
+DisplayName    = %tiamobus.SVCDESC%
+ServiceType    = 1
+StartType      = 0
+ErrorControl   = 1
+ServiceBinary  = %12%\tiamobus.sys
+LoadOrderGroup = Boot Bus Extender
+
+
+[Strings]
+SPSVCINST_ASSOCSERVICE= 0x00000002
+TIAMO = "tiamo"
+StdMfg = "System Bus Extension"
+DiskId1 = "tiamo Bus Installation Disk #1"
+TiamoBus.DeviceDesc = "tiamo Bus"
+tiamobus.SVCDESC = "tiamo Bus"

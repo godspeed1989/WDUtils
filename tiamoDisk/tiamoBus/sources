@@ -1,0 +1,7 @@
+TARGETLIBS=$(DDK_LIB_PATH)/ntstrsafe.lib
+TARGETNAME=tiamoBus
+TARGETTYPE=DRIVER
+
+SOURCES=    tiamoBus.cpp    \
+            power.cpp       \
+            pnp.cpp

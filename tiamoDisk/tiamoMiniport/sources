@@ -1,0 +1,8 @@
+TARGETLIBS=$(DDK_LIB_PATH)/ntstrsafe.lib
+TARGETLIBS=$(DDK_LIB_PATH)/scsiport.lib
+TARGETNAME=tiamoMiniport
+TARGETTYPE=DRIVER
+
+SOURCES=    tiamoMiniport.cpp       \
+            processscsi.cpp         \
+            helper.cpp
