@@ -6,17 +6,6 @@
   #define BLOCK_RESERVE                   (0)
 #else
   #define BLOCK_RESERVE                   (16<<20)
-  #ifdef BLOCK_STORAGE_WRITE_BUFF
-    #define WRITE_BUFFER_SIZE             (2<<20)
-  #endif
-#endif
-
-#ifndef USE_DRAM
-  //TODO: Block Storage Buffer Not Work
-  //#define BLOCK_STORAGE_WRITE_BUFF
-  #ifdef BLOCK_STORAGE_WRITE_BUFF
-    #define WRITE_BUFFER_SIZE             (2<<20)
-  #endif
 #endif
 
 typedef struct _STORAGE_POOL
@@ -33,11 +22,6 @@ typedef struct _STORAGE_POOL
 #endif
     // Opaque
     ULONG           HintIndex;
-#ifdef BLOCK_STORAGE_WRITE_BUFF
-    PUCHAR          WBuffer;
-    LARGE_INTEGER   WBufStartOffset;
-    ULONG           WBufLength;
-#endif
 }STORAGE_POOL, *PSTORAGE_POOL;
 
 BOOLEAN

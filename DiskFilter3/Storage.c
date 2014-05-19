@@ -58,14 +58,6 @@ InitStoragePool (PSTORAGE_POOL StoragePool, ULONG Size
         goto l_error;
 #endif
 
-#ifdef BLOCK_STORAGE_WRITE_BUFF
-    StoragePool->WBuffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, WRITE_BUFFER_SIZE, STORAGE_POOL_TAG);
-    if (StoragePool->WBuffer == NULL)
-        goto l_error;
-    StoragePool->WBufStartOffset.QuadPart = -1;
-    StoragePool->WBufLength = 0;
-#endif
-
     return TRUE;
 l_error:
     if (StoragePool->Bitmap_Buffer)
@@ -92,23 +84,6 @@ DestroyStoragePool(PSTORAGE_POOL StoragePool)
     if (StoragePool->Buffer)
         ExFreePoolWithTag(StoragePool->Buffer, STORAGE_POOL_TAG);
     StoragePool->Buffer = NULL;
-#endif
-#ifdef BLOCK_STORAGE_WRITE_BUFF
-    if (StoragePool->WBuffer)
-    {
-        if (StoragePool->WBufLength)
-            ASSERT (NT_SUCCESS(IoDoRWRequestSync(
-                IRP_MJ_WRITE,
-                StoragePool->BlockDevice,
-                StoragePool->WBuffer,
-                StoragePool->WBufLength,
-                &StoragePool->WBufStartOffset
-            )));
-        ExFreePoolWithTag(StoragePool->WBuffer, STORAGE_POOL_TAG);
-    }
-    StoragePool->WBuffer = NULL;
-    StoragePool->WBufStartOffset.QuadPart = -1;
-    StoragePool->WBufLength = 0;
 #endif
 }
 
@@ -147,44 +122,14 @@ StoragePoolWrite(PSTORAGE_POOL StoragePool, ULONG StartIndex, ULONG Offset, PVOI
 #ifdef USE_DRAM
     RtlCopyMemory(StoragePool->Buffer + writeOffset.QuadPart, Data, Len);
 #else
-  #ifdef BLOCK_STORAGE_WRITE_BUFF
-    if (StoragePool->WBufLength == 0)
-    {
-        StoragePool->WBufStartOffset.QuadPart = writeOffset.QuadPart;
-        StoragePool->WBufLength = Len;
-        RtlCopyMemory(StoragePool->WBuffer, Data, Len);
-    }
-    else if (writeOffset.QuadPart >= StoragePool->WBufStartOffset.QuadPart &&
-             writeOffset.QuadPart <= StoragePool->WBufStartOffset.QuadPart + StoragePool->WBufLength &&
-             writeOffset.QuadPart + Len <= StoragePool->WBufStartOffset.QuadPart + WRITE_BUFFER_SIZE)
-    {
-        ULONG skip = (ULONG)(writeOffset.QuadPart - StoragePool->WBufStartOffset.QuadPart);
-        RtlCopyMemory(StoragePool->WBuffer + skip, Data, Len);
-        StoragePool->WBufLength += Len - (StoragePool->WBufLength - skip);
-    }
-    else
-    {
-        ASSERT (NT_SUCCESS(IoDoRWRequestSync(
-            IRP_MJ_WRITE,
-            StoragePool->BlockDevice,
-            StoragePool->WBuffer,
-            StoragePool->WBufLength,
-            &StoragePool->WBufStartOffset
-        )));
-        DbgPrint("%s: %d\n", __FUNCTION__, StoragePool->WBufLength);
-        StoragePool->WBufStartOffset.QuadPart = writeOffset.QuadPart;
-        StoragePool->WBufLength = Len;
-        RtlCopyMemory(StoragePool->WBuffer, Data, Len);
-    }
-  #else
     ASSERT (NT_SUCCESS(IoDoRWRequestSync(
         IRP_MJ_WRITE,
         StoragePool->BlockDevice,
         Data,
         Len,
-        &writeOffset
+        &writeOffset,
+        2
     )));
-  #endif
 #endif
 }
 
@@ -198,21 +143,13 @@ StoragePoolRead(PSTORAGE_POOL StoragePool, PVOID Data, ULONG StartIndex, ULONG O
 #ifdef USE_DRAM
     RtlCopyMemory(Data, StoragePool->Buffer + readOffset.QuadPart, Len);
 #else
-  #ifdef BLOCK_STORAGE_WRITE_BUFF
-    if (readOffset.QuadPart >= StoragePool->WBufStartOffset.QuadPart &&
-        readOffset.QuadPart + Len <= StoragePool->WBufStartOffset.QuadPart + StoragePool->WBufLength)
-    {
-        LONGLONG skip = readOffset.QuadPart - StoragePool->WBufStartOffset.QuadPart;
-        RtlCopyMemory(Data, StoragePool->WBuffer + skip, Len);
-    }
-  #else
     ASSERT (NT_SUCCESS(IoDoRWRequestSync(
         IRP_MJ_READ,
         StoragePool->BlockDevice,
         Data,
         Len,
-        &readOffset
+        &readOffset,
+        2
     )));
-  #endif
 #endif
 }

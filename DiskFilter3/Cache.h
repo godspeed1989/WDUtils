@@ -9,10 +9,6 @@
 //#define USE_SLRU
 #define USE_OCP
 
-#ifdef BLOCK_STORAGE_WRITE_BUFF
-#undef READ_VERIFY
-#endif
-
 typedef struct _CACHE_BLOCK
 {
     BOOLEAN                 Modified;
