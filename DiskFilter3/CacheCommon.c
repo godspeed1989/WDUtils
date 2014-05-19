@@ -75,11 +75,10 @@ VOID ReadUpdateCachePool(
     Offset /= BLOCK_SIZE;
     Length /= BLOCK_SIZE;
 
-    if(front_broken == TRUE)
+    if (front_broken == TRUE)
     {
     #ifdef WRITE_BACK_ENABLE
-        if (_QueryPoolByIndex(CachePool, Offset-1, &pBlock) == TRUE &&
-            pBlock->Modified == TRUE)
+        if (_QueryPoolByIndex(CachePool, Offset-1, &pBlock) == TRUE)
         {
             _read_data(Buf, pBlock, front_offset, front_skip);
         }
@@ -93,10 +92,7 @@ VOID ReadUpdateCachePool(
         {
             DO_READ_VERIFY(CachePool, &CachePool->Storage, pBlock);
         #ifdef WRITE_BACK_ENABLE
-            if (pBlock->Modified == TRUE)
-            {
-                _read_data(Buf, pBlock, 0, BLOCK_SIZE);
-            }
+            _read_data(Buf, pBlock, 0, BLOCK_SIZE);
         #endif
             _IncreaseBlockReference(CachePool, pBlock);
         }
@@ -113,8 +109,7 @@ VOID ReadUpdateCachePool(
     if (end_broken == TRUE)
     {
     #ifdef WRITE_BACK_ENABLE
-        if (_QueryPoolByIndex(CachePool, Offset+Length, &pBlock) == TRUE &&
-            pBlock->Modified == TRUE)
+        if (_QueryPoolByIndex(CachePool, Offset+Length, &pBlock) == TRUE)
         {
             _read_data(Buf, pBlock, 0, end_cut);
         }
