@@ -63,11 +63,15 @@ VOID ReadUpdateCachePool(
 #endif
 )
 {
-    PUCHAR         origBuf;
-    PCACHE_BLOCK   pBlock;
-    ULONG          i, front_offset, front_skip, end_cut, origLen;
-    BOOLEAN        front_broken, end_broken;
-
+    PUCHAR          origBuf;
+    PCACHE_BLOCK    pBlock;
+    ULONG           i, front_offset, front_skip, end_cut, origLen;
+    BOOLEAN         front_broken, end_broken;
+#ifdef PROFILE
+    LARGE_INTEGER   t1, t2;
+    CachePool->NumRWUpdate++;
+    KeQueryTickCount(&t1);
+#endif
     origBuf = Buf;
     origLen = Length;
 
@@ -117,6 +121,10 @@ VOID ReadUpdateCachePool(
         Buf += end_cut;
     }
     ASSERT(Buf - origBuf == origLen);
+#ifdef PROFILE
+    KeQueryTickCount(&t2);
+    CachePool->SumRWUpdateTickCount.QuadPart += t2.QuadPart - t1.QuadPart;
+#endif
 }
 
 #define _write_data(pBlock,off,Buf,len)                 \
@@ -147,11 +155,15 @@ VOID WriteUpdateCachePool(
 #endif
 )
 {
-    PUCHAR         origBuf;
-    ULONG          i, front_offset, front_skip, end_cut, origLen;
-    BOOLEAN        front_broken, end_broken;
-    PCACHE_BLOCK   pBlock;
-
+    PUCHAR          origBuf;
+    ULONG           i, front_offset, front_skip, end_cut, origLen;
+    BOOLEAN         front_broken, end_broken;
+    PCACHE_BLOCK    pBlock;
+#ifdef PROFILE
+    LARGE_INTEGER   t1, t2;
+    CachePool->NumRWUpdate++;
+    KeQueryTickCount(&t1);
+#endif
     origBuf = Buf;
     origLen = Length;
 
@@ -198,6 +210,10 @@ VOID WriteUpdateCachePool(
         Buf += end_cut;
     }
     ASSERT (Buf - origBuf == origLen);
+#ifdef PROFILE
+    KeQueryTickCount(&t2);
+    CachePool->SumRWUpdateTickCount.QuadPart += t2.QuadPart - t1.QuadPart;
+#endif
 }
 
 /**
@@ -214,12 +230,16 @@ BOOLEAN QueryAndCopyFromCachePool (
 #endif
 )
 {
-    PUCHAR         origBuf;
-    ULONG          i, front_offset, front_skip, end_cut, origLen;
-    BOOLEAN        Ret = FALSE;
-    BOOLEAN        front_broken, end_broken;
-    PCACHE_BLOCK  *ppInternalBlocks = NULL;
-
+    PUCHAR          origBuf;
+    ULONG           i, front_offset, front_skip, end_cut, origLen;
+    BOOLEAN         Ret = FALSE;
+    BOOLEAN         front_broken, end_broken;
+    PCACHE_BLOCK    *ppInternalBlocks = NULL;
+#ifdef PROFILE
+    LARGE_INTEGER   t1, t2;
+    CachePool->NumQuery++;
+    KeQueryTickCount(&t1);
+#endif
     origBuf = Buf;
     origLen = Length;
 
@@ -275,6 +295,10 @@ BOOLEAN QueryAndCopyFromCachePool (
 
     ASSERT(Buf - origBuf == origLen);
     Ret = TRUE;
+#ifdef PROFILE
+    KeQueryTickCount(&t2);
+    CachePool->SumQueryTickCount.QuadPart += t2.QuadPart - t1.QuadPart;
+#endif
 l_error:
     if (ppInternalBlocks != NULL)
         ExFreePoolWithTag(ppInternalBlocks, CACHE_POOL_TAG);
@@ -295,12 +319,16 @@ BOOLEAN QueryAndWriteToCachePool (
 #endif
 )
 {
-    PUCHAR         origBuf;
-    ULONG          i, front_offset, front_skip, end_cut, origLen;
-    BOOLEAN        Ret = FALSE;
-    BOOLEAN        front_broken, end_broken;
-    PCACHE_BLOCK  *ppInternalBlocks = NULL;
-
+    PUCHAR          origBuf;
+    ULONG           i, front_offset, front_skip, end_cut, origLen;
+    BOOLEAN         Ret = FALSE;
+    BOOLEAN         front_broken, end_broken;
+    PCACHE_BLOCK    *ppInternalBlocks = NULL;
+#ifdef PROFILE
+    LARGE_INTEGER   t1, t2;
+    CachePool->NumQuery++;
+    KeQueryTickCount(&t1);
+#endif
     origBuf = Buf;
     origLen = Length;
 
@@ -348,6 +376,10 @@ BOOLEAN QueryAndWriteToCachePool (
 
     ASSERT(Buf - origBuf == origLen);
     Ret = TRUE;
+#ifdef PROFILE
+    KeQueryTickCount(&t2);
+    CachePool->SumQueryTickCount.QuadPart += t2.QuadPart - t1.QuadPart;
+#endif
 l_error:
     if (ppInternalBlocks != NULL)
         ExFreePoolWithTag(ppInternalBlocks, CACHE_POOL_TAG);

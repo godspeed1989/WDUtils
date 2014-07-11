@@ -49,6 +49,12 @@ typedef struct _CACHE_POOL
     STORAGE_POOL            Storage;
     ULONG32                 ReadHit;
     ULONG32                 WriteHit;
+#ifdef PROFILE
+    ULONG                   NumQuery;
+    LARGE_INTEGER           SumQueryTickCount;
+    ULONG                   NumRWUpdate;
+    LARGE_INTEGER           SumRWUpdateTickCount;
+#endif
 #ifdef WRITE_BACK_ENABLE
     Queue                   WbQueue;
     FAST_MUTEX              WbQueueLock;

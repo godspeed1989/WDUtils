@@ -134,6 +134,12 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
                     #endif
                         DevExt->ReadCount = 0;
                         DevExt->WriteCount = 0;
+                    #ifdef PROFILE
+                        DevExt->CachePool.NumQuery = 0;
+                        DevExt->CachePool.SumQueryTickCount.QuadPart = 0;
+                        DevExt->CachePool.NumRWUpdate = 0;
+                        DevExt->CachePool.SumRWUpdateTickCount.QuadPart = 0;
+                    #endif
                         DevExt->CachePool.Size = 0;
                         DevExt->CachePool.Used = 0;
                         DevExt->CachePool.ReadHit = 0;
