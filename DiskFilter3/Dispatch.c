@@ -136,9 +136,9 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
                         DevExt->WriteCount = 0;
                     #ifdef PROFILE
                         DevExt->CachePool.NumQuery = 0;
-                        DevExt->CachePool.SumQueryTickCount.QuadPart = 0;
+                        DevExt->CachePool.SumQueryTickCount = 0;
                         DevExt->CachePool.NumRWUpdate = 0;
-                        DevExt->CachePool.SumRWUpdateTickCount.QuadPart = 0;
+                        DevExt->CachePool.SumRWUpdateTickCount = 0;
                     #endif
                         DevExt->CachePool.Size = 0;
                         DevExt->CachePool.Used = 0;
@@ -194,18 +194,42 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
                     DBG_PRINT(DBG_TRACE_OPS, ("On disk(%u) partition(%u)\n", DevExt->DiskNumber, DevExt->PartitionNumber));
                     if (Type && OutputLength >= 6 * sizeof(ULONG32))
                     {
+                    #ifdef PROFILE
+                        ULONG AverQueryuSec = 0;
+                        ULONG AverUpdateuSec = 0;
+                    #endif
                         ((ULONG32*)OutputBuffer)[0] = DevExt->CachePool.ReadHit;
                         ((ULONG32*)OutputBuffer)[1] = DevExt->CachePool.WriteHit;
                         ((ULONG32*)OutputBuffer)[2] = DevExt->ReadCount;
                         ((ULONG32*)OutputBuffer)[3] = DevExt->WriteCount;
                         ((ULONG32*)OutputBuffer)[4] = DevExt->CachePool.Size;
                         ((ULONG32*)OutputBuffer)[5] = DevExt->CachePool.Used;
-                        Irp->IoStatus.Information = 6 * sizeof(ULONG32);
+                    #ifdef PROFILE
+                        if (DevExt->CachePool.NumQuery)
+                        {
+                            DBG_PRINT(DBG_TRACE_OPS, ("NumQuery: %d %d\n",
+                                DevExt->CachePool.NumQuery, DevExt->CachePool.SumQueryTickCount));
+                            AverQueryuSec = DevExt->CachePool.SumQueryTickCount / DevExt->CachePool.NumQuery;
+                        }
+                        if (DevExt->CachePool.NumRWUpdate)
+                        {
+                            DBG_PRINT(DBG_TRACE_OPS, ("NumUpdate: %d %d\n",
+                                DevExt->CachePool.NumRWUpdate, DevExt->CachePool.SumRWUpdateTickCount));
+                            AverUpdateuSec = DevExt->CachePool.SumRWUpdateTickCount / DevExt->CachePool.NumRWUpdate;
+                        }
+                        ((ULONG32*)OutputBuffer)[6] = (ULONG32)AverQueryuSec;
+                        ((ULONG32*)OutputBuffer)[7] = (ULONG32)AverUpdateuSec;
+                    #endif
+                        Irp->IoStatus.Information = 8 * sizeof(ULONG32);
                     }
                     else
                     {
                         DevExt->CachePool.ReadHit = 0;
                         DevExt->CachePool.WriteHit = 0;
+                        DevExt->CachePool.NumQuery = 0;
+                        DevExt->CachePool.SumQueryTickCount = 0;
+                        DevExt->CachePool.NumRWUpdate = 0;
+                        DevExt->CachePool.SumRWUpdateTickCount = 0;
                         DevExt->ReadCount = 0;
                         DevExt->WriteCount = 0;
                         Irp->IoStatus.Information = 0;

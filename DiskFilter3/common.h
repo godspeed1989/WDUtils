@@ -14,8 +14,6 @@
 #define CACHE_POOL_SIZE                 50      /* MB */
 #define CACHE_POOL_NUM_BLOCKS           ((CACHE_POOL_SIZE << 20)/(BLOCK_SIZE))
 
-#define PROFILE
-
 #ifndef USER_APP
     #include <Ntifs.h>
     #define CACHE_POOL_TAG                      'cpiD'

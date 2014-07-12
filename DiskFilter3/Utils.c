@@ -439,6 +439,14 @@ DF_GetDiskDeviceObjectPointer(
     return status;
 }
 
+ULONG
+QuerySystemTimeuSec()
+{
+    LARGE_INTEGER CurTime, Freq;
+    CurTime = KeQueryPerformanceCounter(&Freq);
+    return (ULONG)((CurTime.QuadPart * 1000000)/Freq.QuadPart);
+}
+
 VOID
 DF_CalMD5(PVOID buf, ULONG len, UCHAR digest[16])
 {

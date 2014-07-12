@@ -37,6 +37,8 @@ NTSTATUS DF_GetDiskDeviceObjectPointer (
         PFILE_OBJECT    *FileObject,
         PDEVICE_OBJECT  *DeviceObject
     );
+ULONG QuerySystemTimeuSec (
+    );
 VOID DF_CalMD5 (
         PVOID buf,
         ULONG len,

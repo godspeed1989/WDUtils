@@ -51,9 +51,9 @@ typedef struct _CACHE_POOL
     ULONG32                 WriteHit;
 #ifdef PROFILE
     ULONG                   NumQuery;
-    LARGE_INTEGER           SumQueryTickCount;
+    ULONG                   SumQueryTickCount;
     ULONG                   NumRWUpdate;
-    LARGE_INTEGER           SumRWUpdateTickCount;
+    ULONG                   SumRWUpdateTickCount;
 #endif
 #ifdef WRITE_BACK_ENABLE
     Queue                   WbQueue;
