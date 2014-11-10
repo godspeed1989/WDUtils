@@ -190,7 +190,7 @@ VOID WriteUpdateCachePool(
         }
         else if (_IsFull(CachePool) == FALSE)
         {
-            pBlock = _AddNewBlockToPool(CachePool, Index, Buf, FALSE);
+            pBlock = _AddNewBlockToPool(CachePool, Index, Buf, TRUE);
             ADD_TO_WBQUEUE_SAFE(pBlock);
         }
         else
