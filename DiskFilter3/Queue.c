@@ -54,5 +54,6 @@ BOOLEAN QueueIsEmpty (PQueue Queue)
 
 BOOLEAN QueueIsFull (PQueue Queue)
 {
+    ASSERT (Queue->Used <= Queue->Size);
     return (Queue->Used == Queue->Size);
 }

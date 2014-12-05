@@ -121,6 +121,8 @@ DF_DispatchIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
                             KeSetEvent(&DevExt->RwThreadStartEvent, IO_NO_INCREMENT, FALSE);
                             KeWaitForSingleObject(&DevExt->RwThreadFinishEvent, Executive, KernelMode, FALSE, NULL);
                         }
+                        KeClearEvent(&DevExt->RwThreadStartEvent);
+                        KeClearEvent(&DevExt->RwThreadFinishEvent);
                     #ifdef WRITE_BACK_ENABLE
                         // Flush Back All Data
                         DevExt->CachePool.WbFlushAll = TRUE;

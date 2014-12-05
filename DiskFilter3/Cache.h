@@ -4,7 +4,7 @@
 #include "common.h"
 #include "Storage.h"
 
-#define READ_VERIFY
+//#define READ_VERIFY
 //#define USE_LRU
 //#define USE_SLRU
 #define USE_OCP
@@ -239,57 +239,76 @@ BOOLEAN         _IsFull(PCACHE_POOL CachePool);
 #ifdef WRITE_BACK_ENABLE
   #define __LOCK_WB_QUEUE(Lock)     ExAcquireFastMutex(Lock)
   #define __UNLOCK_WB_QUEUE(Lock)   ExReleaseFastMutex(Lock)
- #if 1
-  #define LOCK_WB_QUEUE(Lock)       __LOCK_WB_QUEUE(Lock)
-  #define UNLOCK_WB_QUEUE(Lock)     __UNLOCK_WB_QUEUE(Lock)
- #else
-  #define LOCK_WB_QUEUE(Lock)                     \
-  {                                               \
-      DbgPrint("%s: Lock WB\n", __FUNCTION__);    \
-      __LOCK_WB_QUEUE(Lock);                      \
-  }
-  #define UNLOCK_WB_QUEUE(Lock)                   \
-  {                                               \
-      DbgPrint("%s: Unlock WB\n", __FUNCTION__);  \
-      __UNLOCK_WB_QUEUE(Lock);                    \
-  }
- #endif
- #define EMPTY_WB_QUEUE_IF_FULL                                           \
-  while (QueueIsFull(&CachePool->WbQueue))                                \
-  {                                                                       \
-      KeSetEvent(&CachePool->WbThreadStartEvent, IO_NO_INCREMENT, FALSE); \
-      KeWaitForSingleObject(&CachePool->WbThreadFinishEvent,              \
-                             Executive, KernelMode, FALSE, NULL);         \
-  }
-#else
-  #define LOCK_WB_QUEUE(Lock)
-  #define UNLOCK_WB_QUEUE(Lock)
-  #define EMPTY_WB_QUEUE_IF_FULL
+  #if 1
+    #define LOCK_WB_QUEUE(Lock)       __LOCK_WB_QUEUE(Lock)
+    #define UNLOCK_WB_QUEUE(Lock)     __UNLOCK_WB_QUEUE(Lock)
+  #else // just for debug
+    #define LOCK_WB_QUEUE(Lock)                     \
+    {                                               \
+        DbgPrint("%s: Lock WB\n", __FUNCTION__);    \
+        __LOCK_WB_QUEUE(Lock);                      \
+    }
+    #define UNLOCK_WB_QUEUE(Lock)                   \
+    {                                               \
+        DbgPrint("%s: Unlock WB\n", __FUNCTION__);  \
+        __UNLOCK_WB_QUEUE(Lock);                    \
+    }
+  #endif
+  #define EMPTY_WB_QUEUE_IF_FULL                                            \
+    while (QueueIsFull(&CachePool->WbQueue))                                \
+    {                                                                       \
+        KeSetEvent(&CachePool->WbThreadStartEvent, IO_NO_INCREMENT, FALSE); \
+        KeWaitForSingleObject(&CachePool->WbThreadFinishEvent,              \
+                               Executive, KernelMode, FALSE, NULL);         \
+    }                                                                       \
+    KeClearEvent(&CachePool->WbThreadStartEvent);                           \
+    KeClearEvent(&CachePool->WbThreadFinishEvent);
+  #else
+    #define LOCK_WB_QUEUE(Lock)
+    #define UNLOCK_WB_QUEUE(Lock)
+    #define EMPTY_WB_QUEUE_IF_FULL
 #endif
 
 #ifdef WRITE_BACK_ENABLE
-#define ADD_TO_WBQUEUE_SAFE(pBlock)                                         \
-        {                                                                   \
-            EMPTY_WB_QUEUE_IF_FULL;                                         \
-            LOCK_WB_QUEUE(&CachePool->WbQueueLock);                         \
-            ADD_TO_WBQUEUE_NOT_SAFE(pBlock);                                \
-            UNLOCK_WB_QUEUE(&CachePool->WbQueueLock);                       \
+#define ADD_OLD_TO_WBQUEUE_SAFE(pBlock)                     \
+        {                                                   \
+            EMPTY_WB_QUEUE_IF_FULL;                         \
+            LOCK_WB_QUEUE(&CachePool->WbQueueLock);         \
+            if (pBlock->Modified == FALSE)                  \
+            {                                               \
+                pBlock->Modified = TRUE;                    \
+                QueueInsert(&CachePool->WbQueue, pBlock);   \
+            }                                               \
+            UNLOCK_WB_QUEUE(&CachePool->WbQueueLock);       \
         }
-#define ADD_TO_WBQUEUE_NOT_SAFE(pBlock)                                     \
-        {                                                                   \
-            if (pBlock->Modified == FALSE)                                  \
-            {                                                               \
-                pBlock->Modified = TRUE;                                    \
-                QueueInsert(&CachePool->WbQueue, pBlock);                   \
-            }                                                               \
+#define ADD_OLD_TO_WBQUEUE_NOT_SAFE(pBlock)                 \
+        {                                                   \
+            EMPTY_WB_QUEUE_IF_FULL;                         \
+            if (pBlock->Modified == FALSE)                  \
+            {                                               \
+                pBlock->Modified = TRUE;                    \
+                QueueInsert(&CachePool->WbQueue, pBlock);   \
+            }                                               \
+        }
+#define ADD_NEW_TO_WBQUEUE(pBlock)                          \
+        {                                                   \
+            EMPTY_WB_QUEUE_IF_FULL;                         \
+            LOCK_WB_QUEUE(&CachePool->WbQueueLock);         \
+            pBlock->Modified = TRUE;                        \
+            QueueInsert(&CachePool->WbQueue, pBlock);       \
+            UNLOCK_WB_QUEUE(&CachePool->WbQueueLock);       \
         }
 #else
-#define ADD_TO_WBQUEUE_SAFE(pBlock)                                         \
-        {                                                                   \
-            pBlock->Modified = TRUE;                                        \
+#define ADD_OLD_TO_WBQUEUE_SAFE(pBlock)                     \
+        {                                                   \
+            pBlock->Modified = TRUE;                        \
         }
-#define ADD_TO_WBQUEUE_NOT_SAFE(pBlock)                                     \
-        {                                                                   \
-            pBlock->Modified = TRUE;                                        \
+#define ADD_OLD_TO_WBQUEUE_NOT_SAFE(pBlock)                 \
+        {                                                   \
+            pBlock->Modified = TRUE;                        \
+        }
+#define ADD_NEW_TO_WBQUEUE(pBlock)                          \
+        {                                                   \
+            pBlock->Modified = TRUE;                        \
         }
 #endif
