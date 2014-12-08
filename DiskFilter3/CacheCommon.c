@@ -195,8 +195,12 @@ VOID WriteUpdateCachePool(
         }
         else
         {
-            // Mark it *NOT* Modified for Adding to the WB Queue
+            // In WB mode, Mark it *NOT* Modified for Adding to the WB Queue
+        #ifdef WRITE_BACK_ENABLE
             pBlock = _FindBlockToReplace(CachePool, Index, Buf, FALSE);
+        #else
+            pBlock = _FindBlockToReplace(CachePool, Index, Buf, TRUE);
+        #endif
             ADD_OLD_TO_WBQUEUE_SAFE(pBlock);
         }
         Buf += BLOCK_SIZE;
